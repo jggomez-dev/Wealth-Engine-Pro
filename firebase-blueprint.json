@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "StockPrice": {
+      "title": "StockPrice",
+      "description": "Stores the daily closing price of a stock or mutual fund.",
+      "type": "object",
+      "properties": {
+        "symbol": { "type": "string", "description": "The ticker symbol (e.g., VTIAX)" },
+        "price": { "type": "number", "description": "The closing price" },
+        "date": { "type": "string", "format": "date", "description": "The date of the price (YYYY-MM-DD)" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the price was fetched" }
+      },
+      "required": ["symbol", "price", "date", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/prices/{symbol}": {
+      "schema": "StockPrice",
+      "description": "Daily stock prices keyed by symbol."
+    }
+  }
+}

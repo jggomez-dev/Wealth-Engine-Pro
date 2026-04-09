@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Allow read for authenticated users
+    match /prices/{symbol} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // For now, we allow authenticated users to update prices. We will tighten this later.
+    }
+  }
+}

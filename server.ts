@@ -1,16 +1,46 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import yahooFinance from 'yahoo-finance2';
+const yf = yahooFinance;
+import firebaseConfig from './firebase-applet-config.json';
+
+// Lazy initialization for Firebase Admin
+let db: any = null;
+
+function getDb() {
+  if (db) return db;
+  
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!serviceAccount) {
+    console.error("FIREBASE_SERVICE_ACCOUNT_KEY is not configured.");
+    return null;
+  }
+
+  try {
+    if (!getApps().length) {
+      initializeApp({
+        credential: cert(JSON.parse(serviceAccount)),
+      });
+    }
+    db = getFirestore();
+    return db;
+  } catch (error) {
+    console.error("Failed to initialize Firebase Admin:", error);
+    return null;
+  }
+}
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
   const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
-  const priceCache = new Map<string, { price: number; timestamp: number }>();
-  const CACHE_DURATION = 86400000; // 24 hours
+
+  const MUTUAL_FUNDS = ['VTIAX', 'VTSAX', 'VTTSX', 'FZROX'];
 
   function getMockPrice(symbol: string): number {
-    // Updated with more accurate approximate market close prices
     const FALLBACK: Record<string, number> = { 
       VTIAX: 35.85, 
       VXUS: 65.20, 
@@ -38,9 +68,6 @@ async function startServer() {
     if (!tickers) {
       return res.status(400).json({ error: "Tickers are required" });
     }
-    if (!FINNHUB_API_KEY) {
-      return res.status(500).json({ error: "Finnhub API key not configured" });
-    }
 
     try {
       const tickerList = Array.from(new Set(tickers.split(',').map(t => t.trim().toUpperCase())));
@@ -48,37 +75,59 @@ async function startServer() {
       
       const results: { symbol: string; price: number | null }[] = [];
       for (const symbol of tickerList) {
-        // Check cache first
-        const cached = priceCache.get(symbol);
-        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-          console.log(`[${new Date().toISOString()}] Returning cached price for: ${symbol}`);
-          results.push({ symbol, price: cached.price });
-          continue;
+        // Check Firestore first
+        const db = getDb();
+        if (db) {
+          try {
+            const docRef = db.collection('prices').doc(symbol);
+            const doc = await docRef.get();
+            if (doc.exists) {
+              const data = doc.data();
+              if (data && (Date.now() - new Date(data.updatedAt).getTime() < 86400000)) {
+                console.log(`[${new Date().toISOString()}] Returning Firestore price for: ${symbol}`);
+                results.push({ symbol, price: data.price });
+                continue;
+              }
+            }
+          } catch (e) {
+            console.error(`Error fetching from Firestore for ${symbol}:`, e);
+          }
         }
 
         try {
-          // Delay each request by 1 second to stay under the Finnhub free tier limit
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          let price: number | null = null;
           
-          console.log(`[${new Date().toISOString()}] Requesting Finnhub for: ${symbol}`);
-          const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
-          
-          if (!response.ok) {
-            console.error(`[${new Date().toISOString()}] Finnhub HTTP error for ${symbol}: ${response.status}`);
-            results.push({ symbol, price: getMockPrice(symbol) });
-            continue;
+          if (MUTUAL_FUNDS.includes(symbol)) {
+            console.log(`[${new Date().toISOString()}] Requesting Yahoo Finance for mutual fund: ${symbol}`);
+            const quote = await yf.quote(symbol);
+            console.log(`[${new Date().toISOString()}] Yahoo Finance response for ${symbol}:`, JSON.stringify(quote));
+            price = quote.regularMarketPrice || quote.previousClose || null;
+          } else if (FINNHUB_API_KEY) {
+            // Delay each request by 1 second to stay under the Finnhub free tier limit
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            console.log(`[${new Date().toISOString()}] Requesting Finnhub for: ${symbol}`);
+            const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
+            
+            if (response.ok) {
+              const data = await response.json();
+              price = parseFloat(data?.["c"]);
+            }
           }
-
-          const data = await response.json();
           
-          // Finnhub uses 'c' for current price
-          const price = parseFloat(data?.["c"]);
-          
-          if (!isNaN(price) && price !== 0) {
-            priceCache.set(symbol, { price, timestamp: Date.now() });
+          if (price && !isNaN(price) && price !== 0) {
+            // Save to Firestore
+            if (db) {
+              await db.collection('prices').doc(symbol).set({
+                symbol,
+                price,
+                date: new Date().toISOString().split('T')[0],
+                updatedAt: new Date().toISOString()
+              });
+            }
             results.push({ symbol, price });
           } else {
-            console.warn(`[${new Date().toISOString()}] No price found for ${symbol} in response, using mock`);
+            console.warn(`[${new Date().toISOString()}] No price found for ${symbol}, using mock`);
             results.push({ symbol, price: getMockPrice(symbol) });
           }
         } catch (e) {
