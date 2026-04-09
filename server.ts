@@ -7,17 +7,17 @@ const yahooFinance = new YahooFinance();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Request logger
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
   });
 
   // API routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({ status: "ok", timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
   });
 
   app.get("/api/prices", async (req, res) => {
@@ -27,20 +27,36 @@ async function startServer() {
     }
 
     try {
-      const tickerList = tickers.split(',');
+      const tickerList = tickers.split(',').map(t => t.trim().toUpperCase());
       console.log(`Fetching prices for: ${tickerList.join(', ')}`);
       
       const results = await Promise.all(
         tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           try {
-            const quote = await yahooFinance.quote(symbol, {}, { validateResult: false }) as any;
+            const quote = await yahooFinance.quote(symbol, {}, { 
+              validateResult: false,
+              fetchOptions: {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              }
+            }) as any;
+            
             const price = quote?.regularMarketPrice || quote?.postMarketPrice || quote?.preMarketPrice || quote?.bid || quote?.ask;
             
             if (price) {
               return { symbol, price };
             }
 
-            const summary = await yahooFinance.quoteSummary(symbol, { modules: ['price'] }) as any;
+            const summary = await yahooFinance.quoteSummary(symbol, { 
+              modules: ['price'] 
+            }, {
+              fetchOptions: {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              }
+            }) as any;
             const summaryPrice = summary?.price?.regularMarketPrice;
             return { symbol, price: summaryPrice || null };
           } catch (e) {
@@ -80,7 +96,8 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[${new Date().toISOString()}] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
