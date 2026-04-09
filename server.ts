@@ -1,7 +1,11 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import { fileURLToPath } from 'url';
 import yahooFinance from 'yahoo-finance2';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
@@ -26,12 +30,21 @@ async function startServer() {
 
     try {
       const tickerList = tickers.split(',').map(t => t.trim().toUpperCase());
-      console.log(`Fetching prices for: ${tickerList.join(', ')}`);
+      console.log(`[${new Date().toISOString()}] Fetching prices for: ${tickerList.join(', ')}`);
       
       const results = await Promise.all(
         tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           try {
-            const quote = await yahooFinance.quote(symbol, {}, { validateResult: false }) as any;
+            // Use a realistic User-Agent to avoid being blocked by Yahoo
+            const quote = await yahooFinance.quote(symbol, {}, { 
+              validateResult: false,
+              fetchOptions: {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              }
+            }) as any;
+            
             const price = quote?.regularMarketPrice || quote?.postMarketPrice || quote?.preMarketPrice || quote?.bid || quote?.ask;
             
             if (price) {
@@ -42,7 +55,7 @@ async function startServer() {
             const summaryPrice = summary?.price?.regularMarketPrice;
             return { symbol, price: summaryPrice || null };
           } catch (e) {
-            console.error(`Error fetching price for ${symbol}:`, e instanceof Error ? e.message : e);
+            console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e instanceof Error ? e.message : e);
             return { symbol, price: null };
           }
         })
@@ -74,7 +87,8 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.resolve(__dirname, 'dist');
+    console.log(`Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
