@@ -34,16 +34,26 @@ async function startServer() {
       const results = await Promise.all(
         tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           try {
+            console.log(`[${new Date().toISOString()}] Requesting Alpha Vantage for: ${symbol}`);
             const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
+            
+            if (!response.ok) {
+              console.error(`[${new Date().toISOString()}] Alpha Vantage HTTP error for ${symbol}: ${response.status}`);
+              return { symbol, price: null };
+            }
+
             const data = await response.json();
+            console.log(`[${new Date().toISOString()}] Alpha Vantage response for ${symbol}:`, JSON.stringify(data));
+            
             const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
             
             if (!isNaN(price)) {
               return { symbol, price };
             }
+            console.warn(`[${new Date().toISOString()}] No price found for ${symbol} in response`);
             return { symbol, price: null };
           } catch (e) {
-            console.error(`Error fetching price for ${symbol}:`, e);
+            console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e);
             return { symbol, price: null };
           }
         })
