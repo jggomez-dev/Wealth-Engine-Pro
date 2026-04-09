@@ -30,11 +30,11 @@ async function startServer() {
     }
 
     try {
-      const tickerList = tickers.split(',').map(t => t.trim().toUpperCase());
-      console.log(`Fetching prices for: ${tickerList.join(', ')}`);
+      const tickerList = Array.from(new Set(tickers.split(',').map(t => t.trim().toUpperCase())));
+      console.log(`Fetching unique prices for: ${tickerList.join(', ')}`);
       
       const results = await Promise.all(
-        tickerList.map(async (symbol, index): Promise<{ symbol: string; price: number | null }> => {
+        tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           // Check cache first
           const cached = priceCache.get(symbol);
           if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
@@ -43,8 +43,8 @@ async function startServer() {
           }
 
           try {
-            // Delay each request by 1.5 seconds to stay under the 1 request/sec limit
-            await new Promise(resolve => setTimeout(resolve, index * 1500));
+            // Delay each request by 2 seconds to stay under the 1 request/sec limit
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             console.log(`[${new Date().toISOString()}] Requesting Alpha Vantage for: ${symbol}`);
             const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
@@ -55,7 +55,6 @@ async function startServer() {
             }
 
             const data = await response.json();
-            console.log(`[${new Date().toISOString()}] Alpha Vantage response for ${symbol}:`, JSON.stringify(data));
             
             const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
             
