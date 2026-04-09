@@ -63,7 +63,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
       const response = await fetch(`/api/prices?tickers=${tickers}`, { signal: controller.signal });
       clearTimeout(timeoutId);
