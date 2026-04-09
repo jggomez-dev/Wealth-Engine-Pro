@@ -68,7 +68,11 @@ export default function App() {
       const response = await fetch(`/api/prices?tickers=${tickers}`, { signal: controller.signal });
       clearTimeout(timeoutId);
       
-      if (!response.ok) throw new Error(`Sync failed: ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Sync failed: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(`Sync failed: ${response.statusText}`);
+      }
       const priceMap = await response.json();
       
       setAssets(prev => prev.map(asset => {
