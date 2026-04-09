@@ -22,6 +22,21 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  app.get("/api/test-finance", async (req, res) => {
+    try {
+      const symbol = 'AAPL';
+      const quote = await yahooFinance.quote(symbol) as any;
+      res.json({ success: true, symbol, price: quote.regularMarketPrice });
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message, 
+        status: error?.response?.status,
+        data: error?.response?.data 
+      });
+    }
+  });
+
   app.get("/api/prices", async (req, res) => {
     const tickers = req.query.tickers as string;
     if (!tickers) {
@@ -35,7 +50,29 @@ async function startServer() {
       const results = await Promise.all(
         tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           try {
-            // Use a realistic User-Agent to avoid being blocked by Yahoo
+            // Try direct fetch to Yahoo API first (often bypasses library issues and blocks)
+            const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`;
+            const response = await fetch(url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+              }
+            });
+
+            if (response.ok) {
+              const data: any = await response.json();
+              const result = data?.quoteResponse?.result?.[0];
+              const price = result?.regularMarketPrice || result?.postMarketPrice || result?.preMarketPrice;
+              if (price) {
+                console.log(`[${new Date().toISOString()}] Direct fetch success for ${symbol}: ${price}`);
+                return { symbol, price };
+              }
+            } else {
+              console.warn(`[${new Date().toISOString()}] Direct fetch failed for ${symbol} (Status: ${response.status})`);
+            }
+
+            // Fallback to the library if direct fetch fails
             const quote = await yahooFinance.quote(symbol, {}, { 
               validateResult: false,
               fetchOptions: {
@@ -45,17 +82,17 @@ async function startServer() {
               }
             }) as any;
             
-            const price = quote?.regularMarketPrice || quote?.postMarketPrice || quote?.preMarketPrice || quote?.bid || quote?.ask;
+            const price = quote?.regularMarketPrice || quote?.postMarketPrice || quote?.preMarketPrice;
             
             if (price) {
               return { symbol, price };
             }
 
             const summary = await yahooFinance.quoteSummary(symbol, { modules: ['price'] }) as any;
-            const summaryPrice = summary?.price?.regularMarketPrice;
-            return { symbol, price: summaryPrice || null };
-          } catch (e) {
-            console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e instanceof Error ? e.message : e);
+            return { symbol, price: summary?.price?.regularMarketPrice || null };
+          } catch (e: any) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, errorMessage);
             return { symbol, price: null };
           }
         })
