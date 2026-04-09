@@ -1,9 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import YahooFinance from 'yahoo-finance2';
-
-const yahooFinance = new YahooFinance();
+import yahooFinance from 'yahoo-finance2';
 
 async function startServer() {
   const app = express();
@@ -27,7 +25,7 @@ async function startServer() {
     }
 
     try {
-      const tickerList = tickers.split(',');
+      const tickerList = tickers.split(',').map(t => t.trim().toUpperCase());
       console.log(`Fetching prices for: ${tickerList.join(', ')}`);
       
       const results = await Promise.all(
@@ -44,7 +42,7 @@ async function startServer() {
             const summaryPrice = summary?.price?.regularMarketPrice;
             return { symbol, price: summaryPrice || null };
           } catch (e) {
-            console.error(`Error fetching price for ${symbol}:`, e);
+            console.error(`Error fetching price for ${symbol}:`, e instanceof Error ? e.message : e);
             return { symbol, price: null };
           }
         })
@@ -57,10 +55,14 @@ async function startServer() {
         return acc;
       }, {} as Record<string, number>);
 
+      console.log(`Successfully fetched ${Object.keys(priceMap).length} prices`);
       res.json(priceMap);
     } catch (error) {
       console.error("Failed to fetch prices:", error);
-      res.status(500).json({ error: "Failed to fetch prices" });
+      res.status(500).json({ 
+        error: "Failed to fetch prices",
+        details: error instanceof Error ? error.message : String(error)
+      });
     }
   });
 
