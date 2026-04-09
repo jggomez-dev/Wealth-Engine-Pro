@@ -111,7 +111,7 @@ export default function App() {
     };
     checkHealth();
     fetchPrices();
-    const interval = setInterval(fetchPrices, 60000);
+    const interval = setInterval(fetchPrices, 3600000);
     return () => clearInterval(interval);
   }, []);
 

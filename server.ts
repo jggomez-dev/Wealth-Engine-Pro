@@ -6,6 +6,8 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
   const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
+  const priceCache = new Map<string, { price: number; timestamp: number }>();
+  const CACHE_DURATION = 3600000; // 1 hour
 
   // Request logger
   app.use((req, res, next) => {
@@ -33,6 +35,13 @@ async function startServer() {
       
       const results = await Promise.all(
         tickerList.map(async (symbol, index): Promise<{ symbol: string; price: number | null }> => {
+          // Check cache first
+          const cached = priceCache.get(symbol);
+          if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+            console.log(`[${new Date().toISOString()}] Returning cached price for: ${symbol}`);
+            return { symbol, price: cached.price };
+          }
+
           try {
             // Delay each request by 1.5 seconds to stay under the 1 request/sec limit
             await new Promise(resolve => setTimeout(resolve, index * 1500));
@@ -51,6 +60,7 @@ async function startServer() {
             const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
             
             if (!isNaN(price)) {
+              priceCache.set(symbol, { price, timestamp: Date.now() });
               return { symbol, price };
             }
             console.warn(`[${new Date().toISOString()}] No price found for ${symbol} in response`);
