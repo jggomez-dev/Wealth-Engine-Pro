@@ -4,7 +4,7 @@ import path from "path";
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import yahooFinance from 'yahoo-finance2';
-const yf = yahooFinance;
+const yf = new yahooFinance();
 import firebaseConfig from './firebase-applet-config.json';
 
 // Lazy initialization for Firebase Admin
