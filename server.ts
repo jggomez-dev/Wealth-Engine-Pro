@@ -1,13 +1,11 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import YahooFinance from 'yahoo-finance2';
-
-const yahooFinance = new YahooFinance();
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
   // Request logger
   app.use((req, res, next) => {
@@ -25,6 +23,9 @@ async function startServer() {
     if (!tickers) {
       return res.status(400).json({ error: "Tickers are required" });
     }
+    if (!ALPHA_VANTAGE_API_KEY) {
+      return res.status(500).json({ error: "Alpha Vantage API key not configured" });
+    }
 
     try {
       const tickerList = tickers.split(',').map(t => t.trim().toUpperCase());
@@ -33,32 +34,14 @@ async function startServer() {
       const results = await Promise.all(
         tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
           try {
-            const quote = await yahooFinance.quote(symbol, {}, { 
-              validateResult: false,
-              fetchOptions: {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-              }
-            }) as any;
+            const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
+            const data = await response.json();
+            const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
             
-            const price = quote?.regularMarketPrice || quote?.postMarketPrice || quote?.preMarketPrice || quote?.bid || quote?.ask;
-            
-            if (price) {
+            if (!isNaN(price)) {
               return { symbol, price };
             }
-
-            const summary = await yahooFinance.quoteSummary(symbol, { 
-              modules: ['price'] 
-            }, {
-              fetchOptions: {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-              }
-            }) as any;
-            const summaryPrice = summary?.price?.regularMarketPrice;
-            return { symbol, price: summaryPrice || null };
+            return { symbol, price: null };
           } catch (e) {
             console.error(`Error fetching price for ${symbol}:`, e);
             return { symbol, price: null };
