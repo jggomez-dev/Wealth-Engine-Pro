@@ -32,8 +32,11 @@ async function startServer() {
       console.log(`Fetching prices for: ${tickerList.join(', ')}`);
       
       const results = await Promise.all(
-        tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
+        tickerList.map(async (symbol, index): Promise<{ symbol: string; price: number | null }> => {
           try {
+            // Delay each request by 1.5 seconds to stay under the 1 request/sec limit
+            await new Promise(resolve => setTimeout(resolve, index * 1500));
+            
             console.log(`[${new Date().toISOString()}] Requesting Alpha Vantage for: ${symbol}`);
             const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
             
