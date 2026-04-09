@@ -118,12 +118,16 @@ async function startServer() {
           if (price && !isNaN(price) && price !== 0) {
             // Save to Firestore
             if (db) {
-              await db.collection('prices').doc(symbol).set({
-                symbol,
-                price,
-                date: new Date().toISOString().split('T')[0],
-                updatedAt: new Date().toISOString()
-              });
+              try {
+                await db.collection('prices').doc(symbol).set({
+                  symbol,
+                  price,
+                  date: new Date().toISOString().split('T')[0],
+                  updatedAt: new Date().toISOString()
+                });
+              } catch (e) {
+                console.error(`Error saving to Firestore for ${symbol}:`, e);
+              }
             }
             results.push({ symbol, price });
           } else {
