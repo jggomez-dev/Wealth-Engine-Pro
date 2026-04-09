@@ -33,43 +33,45 @@ async function startServer() {
       const tickerList = Array.from(new Set(tickers.split(',').map(t => t.trim().toUpperCase())));
       console.log(`Fetching unique prices for: ${tickerList.join(', ')}`);
       
-      const results = await Promise.all(
-        tickerList.map(async (symbol): Promise<{ symbol: string; price: number | null }> => {
-          // Check cache first
-          const cached = priceCache.get(symbol);
-          if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
-            console.log(`[${new Date().toISOString()}] Returning cached price for: ${symbol}`);
-            return { symbol, price: cached.price };
+      const results: { symbol: string; price: number | null }[] = [];
+      for (const symbol of tickerList) {
+        // Check cache first
+        const cached = priceCache.get(symbol);
+        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+          console.log(`[${new Date().toISOString()}] Returning cached price for: ${symbol}`);
+          results.push({ symbol, price: cached.price });
+          continue;
+        }
+
+        try {
+          // Delay each request by 2 seconds to stay under the 1 request/sec limit
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          console.log(`[${new Date().toISOString()}] Requesting Alpha Vantage for: ${symbol}`);
+          const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
+          
+          if (!response.ok) {
+            console.error(`[${new Date().toISOString()}] Alpha Vantage HTTP error for ${symbol}: ${response.status}`);
+            results.push({ symbol, price: null });
+            continue;
           }
 
-          try {
-            // Delay each request by 2 seconds to stay under the 1 request/sec limit
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            console.log(`[${new Date().toISOString()}] Requesting Alpha Vantage for: ${symbol}`);
-            const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
-            
-            if (!response.ok) {
-              console.error(`[${new Date().toISOString()}] Alpha Vantage HTTP error for ${symbol}: ${response.status}`);
-              return { symbol, price: null };
-            }
-
-            const data = await response.json();
-            
-            const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
-            
-            if (!isNaN(price)) {
-              priceCache.set(symbol, { price, timestamp: Date.now() });
-              return { symbol, price };
-            }
+          const data = await response.json();
+          
+          const price = parseFloat(data?.["Global Quote"]?.["05. price"]);
+          
+          if (!isNaN(price)) {
+            priceCache.set(symbol, { price, timestamp: Date.now() });
+            results.push({ symbol, price });
+          } else {
             console.warn(`[${new Date().toISOString()}] No price found for ${symbol} in response`);
-            return { symbol, price: null };
-          } catch (e) {
-            console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e);
-            return { symbol, price: null };
+            results.push({ symbol, price: null });
           }
-        })
-      );
+        } catch (e) {
+          console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e);
+          results.push({ symbol, price: null });
+        }
+      }
       
       const priceMap = results.reduce((acc, curr) => {
         if (curr.price !== null) {
