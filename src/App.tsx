@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Asset, SimulationParams, SimulationPath, Liability } from './types';
+import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth } from './types';
 import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
@@ -10,6 +10,7 @@ import AggressivenessCard from './components/AggressivenessCard';
 import ProjectionChart from './components/ProjectionChart';
 import LedgerTable from './components/LedgerTable';
 import LiabilitiesTable from './components/LiabilitiesTable';
+import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
@@ -42,6 +43,7 @@ export default function App() {
   
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [params, setParams] = useState<SimulationParams>({
@@ -201,15 +203,29 @@ export default function App() {
         console.error("Error fetching liabilities:", error);
       });
 
+      // Listen to Historical Net Worth
+      const unsubHistorical = onSnapshot(collection(db, 'users', user.uid, 'historicalNetWorth'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HistoricalNetWorth));
+          setHistoricalRecords(loadedRecords);
+        } else {
+          setHistoricalRecords([]);
+        }
+      }, (error) => {
+        console.error("Error fetching historical net worth:", error);
+      });
+
       return () => {
         unsubProfile();
         unsubAssets();
         unsubLiabilities();
+        unsubHistorical();
       };
     } else {
       // Reset to defaults if logged out
       setAssets(INITIAL_ASSETS);
       setLiabilities([]);
+      setHistoricalRecords([]);
     }
   }, [user, isAuthReady]);
 
@@ -316,6 +332,24 @@ export default function App() {
   const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
   const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
   const totalWealth = totalAssets - totalLiabilities; // Net Worth
+
+  const recordNetWorth = () => {
+    if (!user) {
+      alert("Please sign in to save historical data.");
+      return;
+    }
+    const id = Math.random().toString(36).substr(2, 9);
+    const newRecord: HistoricalNetWorth = {
+      id,
+      date: new Date().toISOString(),
+      totalAssets,
+      totalLiabilities,
+      netWorth: totalWealth
+    };
+    setHistoricalRecords(prev => [...prev, newRecord]);
+    setDoc(doc(db, 'users', user.uid, 'historicalNetWorth', id), { ...newRecord, userId: user.uid }).catch(console.error);
+  };
+
   const totalCash = useMemo(() => 
     activeAssets
       .filter(a => a.type === 'Cash')
@@ -388,6 +422,7 @@ export default function App() {
           params={params} 
           setParams={updateParams} 
           assets={assets}
+          currency={currency}
           onUpdateAsset={updateAsset}
         />
       </div>
@@ -404,6 +439,7 @@ export default function App() {
               params={params} 
               setParams={updateParams} 
               assets={assets}
+              currency={currency}
               onUpdateAsset={updateAsset}
               onClose={() => setIsSidebarOpen(false)}
             />
@@ -438,7 +474,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-widest text-indigo-700 hover:bg-indigo-100 transition-all shadow-sm"
                 >
                   <LogOut className="w-4 h-4" />
-                  Sign Out
+                  {t('signOut')}
                 </button>
               ) : (
                 <button
@@ -446,7 +482,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-600 border border-indigo-700 rounded-lg text-xs font-bold uppercase tracking-widest text-white hover:bg-indigo-700 transition-all shadow-sm"
                 >
                   <LogIn className="w-4 h-4" />
-                  Sign In to Save
+                  {t('signIn')}
                 </button>
               )}
               <button
@@ -564,6 +600,15 @@ export default function App() {
             <div className="lg:col-span-2 2xl:col-span-2 min-w-0">
               <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
             </div>
+          </div>
+
+          {/* Historical Net Worth */}
+          <div className="w-full">
+            <HistoricalChart 
+              data={historicalRecords} 
+              currency={currency} 
+              onRecord={recordNetWorth} 
+            />
           </div>
           
           {/* Portfolio Coach */}

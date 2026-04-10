@@ -4,14 +4,19 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAiZtchP4dAaRbRe5x_WTTUXXCPTGlpMYE",
-  authDomain: "wealth-engine-g.firebaseapp.com",
-  projectId: "wealth-engine-g",
-  storageBucket: "wealth-engine-g.firebasestorage.app",
-  messagingSenderId: "1022727225590",
-  appId: "1:1022727225590:web:07e0e0b2897bdfa194ecd7",
-  measurementId: "G-KTVX8GFC80"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
+
+// Check if critical config is missing
+if (!firebaseConfig.apiKey) {
+  console.warn("Firebase API Key is missing. Please configure it in the AI Studio Settings.");
+}
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);

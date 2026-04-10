@@ -108,6 +108,12 @@ export const translations = {
     other: 'Other',
     totalLiabilities: 'Total Liabilities',
     netWorthCalculation: 'Assets - Liabilities',
+    historicalNetWorth: 'Historical Net Worth',
+    historicalNetWorthSubtitle: 'Track your wealth over time',
+    recordNetWorth: 'Record Current Net Worth',
+    date: 'Date',
+    signIn: 'Sign In to Save',
+    signOut: 'Sign Out',
   },
   es: {
     appName: 'Wealth Engine',
@@ -216,5 +222,11 @@ export const translations = {
     other: 'Otro',
     totalLiabilities: 'Total de Pasivos',
     netWorthCalculation: 'Activos - Pasivos',
+    historicalNetWorth: 'Patrimonio Neto Histórico',
+    historicalNetWorthSubtitle: 'Rastrea tu riqueza a lo largo del tiempo',
+    recordNetWorth: 'Registrar Patrimonio Actual',
+    date: 'Fecha',
+    signIn: 'Iniciar Sesión',
+    signOut: 'Cerrar Sesión',
   }
 };

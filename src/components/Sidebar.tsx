@@ -7,12 +7,14 @@ interface SidebarProps {
   params: SimulationParams;
   setParams: (params: SimulationParams) => void;
   assets: Asset[];
+  currency: 'USD' | 'EUR';
   onUpdateAsset: (id: string, updates: Partial<Asset>) => void;
   onClose?: () => void;
 }
 
-export default function Sidebar({ params, setParams, assets, onUpdateAsset, onClose }: SidebarProps) {
+export default function Sidebar({ params, setParams, assets, currency, onUpdateAsset, onClose }: SidebarProps) {
   const { t } = useLanguage();
+  const currencySymbol = currency === 'USD' ? '$' : '€';
   const handleChange = (key: keyof SimulationParams, value: number) => {
     setParams({ ...params, [key]: value });
   };
@@ -53,7 +55,7 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
             min={2000}
             max={15000}
             step={100}
-            unit="$"
+            unit={currencySymbol}
             onChange={(v) => handleChange('monthlySpend', v)}
           />
 
@@ -63,7 +65,7 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
             min={0}
             max={10000}
             step={100}
-            unit="$"
+            unit={currencySymbol}
             onChange={(v) => handleChange('monthlySavings', v)}
           />
           
@@ -218,13 +220,37 @@ interface ControlGroupProps {
 }
 
 function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlGroupProps) {
+  const [localValue, setLocalValue] = React.useState(value.toString());
+
+  React.useEffect(() => {
+    setLocalValue(value.toString());
+  }, [value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalValue(val);
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed)) {
+      onChange(parsed);
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex justify-between items-center">
-        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
-        <span className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">
-          {unit === '$' ? `$${value.toLocaleString()}` : `${unit === '%' ? value.toFixed(1).replace(/\.0$/, '') : value}${unit}`}
-        </span>
+      <div className="flex justify-between items-center gap-2">
+        <label className="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{label}</label>
+        <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 focus-within:border-indigo-400 transition-all">
+          {['$', '€'].includes(unit) && <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{unit}</span>}
+          <input
+            type="text"
+            value={localValue}
+            onChange={handleInputChange}
+            className="w-16 text-right text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-transparent border-none p-0 focus:ring-0"
+          />
+          {unit !== '$' && unit !== '€' && (
+            <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{unit}</span>
+          )}
+        </div>
       </div>
       <input
         type="range"
@@ -236,8 +262,8 @@ function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlG
         className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
       />
       <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 font-mono">
-        <span>{unit === '$' ? `$${min/1000}k` : `${min}${unit}`}</span>
-        <span>{unit === '$' ? `$${max/1000}k` : `${max}${unit}`}</span>
+        <span>{['$', '€'].includes(unit) ? `${unit}${min/1000}k` : `${min}${unit}`}</span>
+        <span>{['$', '€'].includes(unit) ? `${unit}${max/1000}k` : `${max}${unit}`}</span>
       </div>
     </div>
   );

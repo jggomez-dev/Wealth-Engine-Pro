@@ -24,6 +24,14 @@ export interface Liability {
   minimumPayment: number;
 }
 
+export interface HistoricalNetWorth {
+  id: string;
+  date: string;
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+}
+
 export interface SimulationParams {
   monthlySpend: number;
   monthlySavings: number;
