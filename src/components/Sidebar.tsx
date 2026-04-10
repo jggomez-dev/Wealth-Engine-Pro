@@ -201,7 +201,7 @@ function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlG
       <div className="flex justify-between items-center">
         <label className="text-sm font-medium text-slate-700">{label}</label>
         <span className="text-sm font-mono font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-          {unit === '$' ? `$${value.toLocaleString()}` : `${value}${unit}`}
+          {unit === '$' ? `$${value.toLocaleString()}` : `${unit === '%' ? value.toFixed(1).replace(/\.0$/, '') : value}${unit}`}
         </span>
       </div>
       <input
