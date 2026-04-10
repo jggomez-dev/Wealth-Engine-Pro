@@ -19,23 +19,29 @@ export function runMonteCarlo(
   sigma: number, // Volatility (annual)
   monthlySavings: number = 0,
   inflationRate: number = 0.02,
+  marketCrash: number = 0,
+  careerAdjustment: number = 0,
   numSims: number = 100
 ): MonteCarloResults {
   const allPaths: number[][] = []; // [simIndex][yearIndex]
-  const months = years * 12;
   const monthlyMu = (mu - inflationRate) / 12;
   const monthlySigma = sigma / Math.sqrt(12);
+  const adjustedMonthlySavings = monthlySavings * (1 + careerAdjustment);
 
   for (let i = 0; i < numSims; i++) {
     const path: number[] = [currentNW];
     let currentVal = currentNW;
+    const crashYear = Math.floor(Math.random() * years);
 
     for (let y = 1; y <= years; y++) {
+      if (y === crashYear && marketCrash > 0) {
+        currentVal = currentVal * (1 - marketCrash);
+      }
       for (let m = 0; m < 12; m++) {
         const z = normalRandom();
         // Monthly growth using GBM: exp((mu - 0.5*sigma^2) + sigma*z)
         const growth = Math.exp((monthlyMu - 0.5 * Math.pow(monthlySigma, 2)) + monthlySigma * z);
-        currentVal = currentVal * growth + monthlySavings;
+        currentVal = currentVal * growth + adjustedMonthlySavings;
       }
       // Ensure wealth doesn't go negative (though unlikely with GBM)
       currentVal = Math.max(0, currentVal);
@@ -73,7 +79,8 @@ export function calculateFIYear(
   monthlySavings: number,
   expectedReturn: number,
   withdrawalRate: number,
-  inflationRate: number = 0.02
+  inflationRate: number = 0.02,
+  careerAdjustment: number = 0
 ): number | null {
   const targetNW = (monthlySpend * 12) / withdrawalRate;
   if (currentNW >= targetNW) return 0;
@@ -82,10 +89,11 @@ export function calculateFIYear(
   // Real return = Nominal return - Inflation
   const realReturn = expectedReturn - inflationRate;
   const monthlyReturn = Math.pow(1 + realReturn, 1/12) - 1;
+  const adjustedMonthlySavings = monthlySavings * (1 + careerAdjustment);
 
   // Simulate up to 100 years
   for (let m = 1; m <= 1200; m++) {
-    currentVal = currentVal * (1 + monthlyReturn) + monthlySavings;
+    currentVal = currentVal * (1 + monthlyReturn) + adjustedMonthlySavings;
     if (currentVal >= targetNW) {
       return m / 12;
     }

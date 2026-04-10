@@ -24,6 +24,8 @@ export interface SimulationParams {
   withdrawalRate: number;
   inflationRate: number;
   taxRate: number;
+  marketCrash: number;
+  careerAdjustment: number;
 }
 
 export interface SimulationPath {

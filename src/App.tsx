@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Asset, SimulationParams, SimulationPath } from './types';
 import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear } from './utils/finance';
+import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
 import Sidebar from './components/Sidebar';
 import MetricCard from './components/MetricCard';
@@ -9,7 +10,7 @@ import ProjectionChart from './components/ProjectionChart';
 import LedgerTable from './components/LedgerTable';
 import RebalancingCard from './components/RebalancingCard';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages } from 'lucide-react';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 
 const INITIAL_ASSETS: Asset[] = [
@@ -45,9 +46,29 @@ export default function App() {
     withdrawalRate: 0.04,
     inflationRate: 0.02,
     taxRate: 0.25,
+    marketCrash: 0,
+    careerAdjustment: 0,
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [coachPrompt, setCoachPrompt] = useState('');
+  const [coachResponse, setCoachResponse] = useState('');
+  const [isCoaching, setIsCoaching] = useState(false);
+
+  const askCoach = async () => {
+    if (!coachPrompt.trim()) return;
+    setIsCoaching(true);
+    try {
+      const portfolioData = JSON.stringify(activeAssets);
+      const response = await getPortfolioInsight(portfolioData, coachPrompt);
+      setCoachResponse(response || "Sorry, I couldn't generate an insight right now.");
+    } catch (e) {
+      console.error(e);
+      setCoachResponse("Error getting insight.");
+    } finally {
+      setIsCoaching(false);
+    }
+  };
 
   // Fetch Live Prices
   const fetchPrices = async () => {
@@ -116,6 +137,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const updateAsset = (id: string, updates: Partial<Asset>) => {
     setAssets(prev => prev.map(asset => {
       if (asset.id === id) {
@@ -180,19 +211,19 @@ export default function App() {
   }, [activeAssets, totalWealth, params.expectedReturn, params.realEstateReturn]);
 
   const fiYear = useMemo(() => 
-    calculateFIYear(effectiveWealth, params.monthlySpend, params.monthlySavings, weightedExpectedReturn, params.withdrawalRate, params.inflationRate),
-    [effectiveWealth, params.monthlySpend, params.monthlySavings, weightedExpectedReturn, params.withdrawalRate, params.inflationRate]
+    calculateFIYear(effectiveWealth, params.monthlySpend, params.monthlySavings, weightedExpectedReturn, params.withdrawalRate, params.inflationRate, params.careerAdjustment),
+    [effectiveWealth, params.monthlySpend, params.monthlySavings, weightedExpectedReturn, params.withdrawalRate, params.inflationRate, params.careerAdjustment]
   );
 
   const mcResults = useMemo(() => 
-    runMonteCarlo(totalWealth, params.retirementYears, weightedExpectedReturn, params.volatility, params.monthlySavings, params.inflationRate),
-    [totalWealth, params.retirementYears, weightedExpectedReturn, params.volatility, params.monthlySavings, params.inflationRate]
+    runMonteCarlo(totalWealth, params.retirementYears, weightedExpectedReturn, params.volatility, params.monthlySavings, params.inflationRate, params.marketCrash, params.careerAdjustment),
+    [totalWealth, params.retirementYears, weightedExpectedReturn, params.volatility, params.monthlySavings, params.inflationRate, params.marketCrash, params.careerAdjustment]
   );
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden relative">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden relative">
       {/* Desktop Sidebar (Permanent) */}
-      <div className="hidden lg:block lg:w-64 xl:w-80 border-r border-slate-200 bg-white lg:bg-slate-50/50 shrink-0 overflow-y-auto">
+      <div className="hidden lg:block lg:w-64 xl:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:bg-slate-50/50 lg:dark:bg-slate-950/50 shrink-0 overflow-y-auto">
         <Sidebar 
           params={params} 
           setParams={setParams} 
@@ -220,8 +251,8 @@ export default function App() {
         </>
       )}
 
-      <main className="flex-1 overflow-y-auto p-4 lg:p-8 min-w-0">
-        <div className="max-w-7xl mx-auto space-y-6 lg:space-y-8">
+      <main className="flex-1 overflow-y-auto pt-8 lg:pt-12 p-4 lg:p-8 min-w-0">
+        <div id="dashboard-content" className="max-w-[95rem] mx-auto space-y-6 lg:space-y-8">
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div className="flex items-center gap-4 w-full md:w-auto">
@@ -274,11 +305,11 @@ export default function App() {
           </div>
 
           {/* Top Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
             <MetricCard
-              title={t('netWorth')}
-              value={formatCurrency(totalWealth, currency)}
-              subtitle={t('netWorthSubtitle')}
+              title={params.marketCrash > 0 ? t('crashedNetWorth') : t('netWorth')}
+              value={formatCurrency(params.marketCrash > 0 ? totalWealth * (1 - params.marketCrash) : totalWealth, currency)}
+              subtitle={params.marketCrash > 0 ? `${t('originalValue')}: ${formatCurrency(totalWealth, currency)}` : t('netWorthSubtitle')}
               icon={<Wallet className="w-5 h-5" />}
             />
             <MetricCard
@@ -295,6 +326,8 @@ export default function App() {
               icon={<Target className="w-5 h-5" />}
               progress={totalWealth / fiTarget}
             />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
             <MetricCard
               title={t('monthlySavings')}
               value={formatCurrency(params.monthlySavings, currency)}
@@ -312,12 +345,12 @@ export default function App() {
           </div>
 
           {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 xl:col-span-1 space-y-6 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-6">
+            <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
               <PortfolioChart assets={activeAssets} />
               <RebalancingCard assets={activeAssets} />
             </div>
-            <div className="lg:col-span-1 xl:col-span-1 space-y-6 min-w-0">
+            <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
               <TaxBreakdownChart assets={activeAssets} />
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
@@ -346,12 +379,39 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="lg:col-span-2 xl:col-span-1 min-w-0">
+            <div className="lg:col-span-2 2xl:col-span-2 min-w-0">
               <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
             </div>
           </div>
-
-          {/* Health Checks */}
+          
+          {/* Portfolio Coach */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 text-indigo-600">
+              <BrainCircuit className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider">Portfolio Coach</h3>
+            </div>
+            <textarea
+              value={coachPrompt}
+              onChange={(e) => setCoachPrompt(e.target.value)}
+              placeholder="Ask about your portfolio..."
+              className="w-full p-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              rows={3}
+            />
+            <button
+              onClick={askCoach}
+              disabled={isCoaching}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors disabled:bg-indigo-400"
+            >
+              {isCoaching ? 'Thinking...' : <><Send className="w-4 h-4" /> Ask Coach</>}
+            </button>
+            {coachResponse && (
+              <div className="p-4 bg-slate-50 rounded-lg text-sm text-slate-700 whitespace-pre-wrap">
+                {coachResponse}
+              </div>
+            )}
+          </div>
+          
+          {/* Health Checks & Ledger */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
             <HealthCard
               title={t('liquidityCheck')}

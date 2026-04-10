@@ -34,14 +34,14 @@ export default function MetricCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "bg-white p-4 lg:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full min-h-[140px] lg:min-h-[160px] relative",
+        "bg-white dark:bg-slate-900 p-4 lg:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full min-h-[140px] lg:min-h-[160px] relative",
         className
       )}
     >
       <div className="flex justify-between items-start mb-4">
         <div className="space-y-2 flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-tight">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 leading-tight">
               {title}
             </p>
             {info && (
@@ -49,45 +49,45 @@ export default function MetricCard({
                 <button 
                   onMouseEnter={() => setShowInfo(true)}
                   onMouseLeave={() => setShowInfo(false)}
-                  className="text-slate-300 hover:text-slate-500 transition-colors"
+                  className="text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-400 transition-colors"
                 >
                   <Info className="w-3 h-3" />
                 </button>
                 {showInfo && (
-                  <div className="absolute z-50 top-full left-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl pointer-events-none">
+                  <div className="absolute z-50 top-full left-0 mt-2 w-48 p-2 bg-slate-900 dark:bg-slate-800 text-white text-[10px] rounded-lg shadow-xl pointer-events-none">
                     {info}
                   </div>
                 )}
               </div>
             )}
           </div>
-          <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-mono truncate">
+          <h3 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight font-mono truncate">
             {value}
           </h3>
         </div>
         {icon && (
-          <div className="p-2.5 bg-slate-50 rounded-xl text-slate-600 shrink-0 ml-3">
+          <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400 shrink-0 ml-3">
             {icon}
           </div>
         )}
       </div>
 
-      <div className="mt-auto pt-4 border-t border-slate-50">
+      <div className="mt-auto pt-4 border-t border-slate-50 dark:border-slate-800">
         {progress !== undefined ? (
           <div className="space-y-2.5">
-            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.min(progress * 100, 100)}%` }}
-                className="h-full bg-indigo-600 rounded-full"
+                className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-full"
               />
             </div>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">
               {subtitle}
             </p>
           </div>
         ) : (
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">
+          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest leading-tight">
             {subtitle}
           </p>
         )}

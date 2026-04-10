@@ -28,21 +28,21 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
   };
 
   return (
-    <aside className="w-80 lg:w-64 xl:w-80 h-full border-r border-slate-200 bg-white lg:bg-slate-50/50 p-6 flex flex-col gap-8 overflow-y-auto shadow-2xl lg:shadow-none">
+    <aside className="w-80 lg:w-64 xl:w-80 h-full border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:bg-slate-50/50 lg:dark:bg-slate-950/50 p-6 flex flex-col gap-8 overflow-y-auto shadow-2xl lg:shadow-none">
       <div className="flex justify-between items-center lg:hidden">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           {t('economicControls')}
         </h2>
         <button 
           onClick={onClose}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
         >
-          <EyeOff className="w-5 h-5 text-slate-400" />
+          <EyeOff className="w-5 h-5 text-slate-400 dark:text-slate-500" />
         </button>
       </div>
 
       <div>
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-6 hidden lg:block">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-6 hidden lg:block">
           {t('economicControls')}
         </h2>
         
@@ -137,8 +137,30 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
             onChange={(v) => handleChange('taxRate', v / 100)}
           />
 
-          <div className="pt-6 border-t border-slate-200">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+          <ControlGroup
+            label={t('marketCrashSim')}
+            value={params.marketCrash * 100}
+            min={0}
+            max={50}
+            step={1}
+            unit="%"
+            onChange={(v) => handleChange('marketCrash', v / 100)}
+          />
+          <p className="text-[10px] text-slate-400 italic">{t('marketCrashDesc')}</p>
+
+          <ControlGroup
+            label={t('careerAdjustment')}
+            value={params.careerAdjustment * 100}
+            min={-50}
+            max={50}
+            step={1}
+            unit="%"
+            onChange={(v) => handleChange('careerAdjustment', v / 100)}
+          />
+          <p className="text-[10px] text-slate-400 italic">{t('careerAdjustmentDesc')}</p>
+
+          <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4">
               {t('categoryExclusion')}
             </h3>
             <div className="space-y-2">
@@ -159,10 +181,10 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
                     onClick={() => toggleCategory(type, !allEnabled)}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                       allEnabled 
-                        ? 'bg-white text-slate-700 shadow-sm border border-slate-200' 
+                        ? 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm border border-slate-200 dark:border-slate-700' 
                         : someEnabled
-                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                          : 'bg-slate-100 text-slate-400 border border-transparent'
+                          ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 border border-transparent'
                     }`}
                   >
                     <span>{typeLabel}</span>
@@ -175,8 +197,8 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
         </div>
       </div>
 
-      <div className="mt-auto pt-6 border-t border-slate-200">
-        <p className="text-[10px] text-slate-400 leading-relaxed">
+      <div className="mt-auto pt-6 border-t border-slate-200 dark:border-slate-800">
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
           {t('appName')} Pro v2.0<br />
           {t('appSubtitle')}
         </p>
@@ -199,8 +221,8 @@ function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlG
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <label className="text-sm font-medium text-slate-700">{label}</label>
-        <span className="text-sm font-mono font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
+        <span className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">
           {unit === '$' ? `$${value.toLocaleString()}` : `${unit === '%' ? value.toFixed(1).replace(/\.0$/, '') : value}${unit}`}
         </span>
       </div>
@@ -211,9 +233,9 @@ function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlG
         step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+        className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
       />
-      <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+      <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-600 font-mono">
         <span>{unit === '$' ? `$${min/1000}k` : `${min}${unit}`}</span>
         <span>{unit === '$' ? `$${max/1000}k` : `${max}${unit}`}</span>
       </div>

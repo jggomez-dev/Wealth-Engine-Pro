@@ -75,6 +75,12 @@ export const translations = {
     cash: 'Cash',
     private: 'Private',
     realEstate: 'Real Estate',
+    marketCrashSim: 'Market Crash Simulation',
+    marketCrashDesc: 'Simulates a sudden percentage drop in your total portfolio value.',
+    careerAdjustment: 'Career/Life Adjustment',
+    careerAdjustmentDesc: 'Adjusts your monthly savings rate (e.g., -20% for a career break, +20% for a promotion).',
+    crashedNetWorth: 'Crashed Net Worth',
+    originalValue: 'Original',
   },
   es: {
     appName: 'Wealth Engine',
@@ -150,5 +156,11 @@ export const translations = {
     cash: 'Efectivo',
     private: 'Privado',
     realEstate: 'Bienes Raíces',
+    marketCrashSim: 'Simulación de Caída de Mercado',
+    marketCrashDesc: 'Simula una caída porcentual repentina en el valor total de su cartera.',
+    careerAdjustment: 'Ajuste de Carrera/Vida',
+    careerAdjustmentDesc: 'Ajusta su tasa de ahorro mensual (ej. -20% por pausa profesional, +20% por promoción).',
+    crashedNetWorth: 'Patrimonio Neto Tras Caída',
+    originalValue: 'Original',
   }
 };
