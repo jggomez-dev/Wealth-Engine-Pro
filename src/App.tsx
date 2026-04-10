@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Asset, SimulationParams, SimulationPath } from './types';
+import { Asset, SimulationParams, SimulationPath, Liability } from './types';
 import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
@@ -9,9 +9,13 @@ import PortfolioChart from './components/PortfolioChart';
 import AggressivenessCard from './components/AggressivenessCard';
 import ProjectionChart from './components/ProjectionChart';
 import LedgerTable from './components/LedgerTable';
+import LiabilitiesTable from './components/LiabilitiesTable';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send } from 'lucide-react';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
+import { auth, db } from './firebase';
+import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { doc, setDoc, collection, onSnapshot, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
 
 const INITIAL_ASSETS: Asset[] = [
   { id: '1', account: 'IRA 1', ticker: 'VTIAX', type: 'International Stock', taxStatus: 'Pre-Tax', qty: 431.11, beta: 1.0, total: 0, isEnabled: true },
@@ -33,7 +37,11 @@ const INITIAL_ASSETS: Asset[] = [
 
 export default function App() {
   const { t, language, setLanguage } = useLanguage();
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [params, setParams] = useState<SimulationParams>({
@@ -148,12 +156,110 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Firebase Data Sync
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    if (user) {
+      // Listen to User Profile (Settings)
+      const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        if (docSnap.exists() && docSnap.data().settings) {
+          setParams(docSnap.data().settings);
+        }
+      }, (error) => {
+        console.error("Error fetching profile:", error);
+      });
+
+      // Listen to Assets
+      const unsubAssets = onSnapshot(collection(db, 'users', user.uid, 'assets'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedAssets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
+          setAssets(loadedAssets);
+        }
+      }, (error) => {
+        console.error("Error fetching assets:", error);
+      });
+
+      // Listen to Liabilities
+      const unsubLiabilities = onSnapshot(collection(db, 'users', user.uid, 'liabilities'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedLiabilities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Liability));
+          setLiabilities(loadedLiabilities);
+        } else {
+          setLiabilities([]);
+        }
+      }, (error) => {
+        console.error("Error fetching liabilities:", error);
+      });
+
+      return () => {
+        unsubProfile();
+        unsubAssets();
+        unsubLiabilities();
+      };
+    } else {
+      // Reset to defaults if logged out
+      setAssets(INITIAL_ASSETS);
+      setLiabilities([]);
+    }
+  }, [user, isAuthReady]);
+
+  const handleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      // Check if user profile exists, if not, create it with current local state
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, 'users', result.user.uid), {
+          uid: result.user.uid,
+          email: result.user.email,
+          settings: params
+        });
+        
+        // Batch write initial assets
+        const batch = writeBatch(db);
+        assets.forEach(asset => {
+          const assetRef = doc(db, 'users', result.user.uid, 'assets', asset.id);
+          batch.set(assetRef, { ...asset, userId: result.user.uid });
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Login failed:", error);
+    }
+  };
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
+
+  const updateParams = (newParams: SimulationParams) => {
+    setParams(newParams);
+    if (user) {
+      setDoc(doc(db, 'users', user.uid), { settings: newParams }, { merge: true }).catch(console.error);
+    }
+  };
+
   const updateAsset = (id: string, updates: Partial<Asset>) => {
     setAssets(prev => prev.map(asset => {
       if (asset.id === id) {
         const updated = { ...asset, ...updates };
         if (updated.price && updated.qty !== undefined) {
           updated.total = updated.qty * updated.price;
+        }
+        if (user) {
+          setDoc(doc(db, 'users', user.uid, 'assets', id), updated, { merge: true }).catch(console.error);
         }
         return updated;
       }
@@ -162,19 +268,54 @@ export default function App() {
   };
 
   const addAsset = (asset: Omit<Asset, 'id'>) => {
-    const newAsset: Asset = {
-      ...asset,
-      id: Math.random().toString(36).substr(2, 9),
-    };
+    const id = Math.random().toString(36).substr(2, 9);
+    const newAsset: Asset = { ...asset, id };
     setAssets(prev => [...prev, newAsset]);
+    if (user) {
+      setDoc(doc(db, 'users', user.uid, 'assets', id), { ...newAsset, userId: user.uid }).catch(console.error);
+    }
   };
 
   const deleteAsset = (id: string) => {
     setAssets(prev => prev.filter(a => a.id !== id));
+    if (user) {
+      deleteDoc(doc(db, 'users', user.uid, 'assets', id)).catch(console.error);
+    }
+  };
+
+  const updateLiability = (id: string, updates: Partial<Liability>) => {
+    setLiabilities(prev => prev.map(liability => {
+      if (liability.id === id) {
+        const updated = { ...liability, ...updates };
+        if (user) {
+          setDoc(doc(db, 'users', user.uid, 'liabilities', id), updated, { merge: true }).catch(console.error);
+        }
+        return updated;
+      }
+      return liability;
+    }));
+  };
+
+  const addLiability = (liability: Omit<Liability, 'id'>) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const newLiability: Liability = { ...liability, id };
+    setLiabilities(prev => [...prev, newLiability]);
+    if (user) {
+      setDoc(doc(db, 'users', user.uid, 'liabilities', id), { ...newLiability, userId: user.uid }).catch(console.error);
+    }
+  };
+
+  const deleteLiability = (id: string) => {
+    setLiabilities(prev => prev.filter(l => l.id !== id));
+    if (user) {
+      deleteDoc(doc(db, 'users', user.uid, 'liabilities', id)).catch(console.error);
+    }
   };
 
   const activeAssets = useMemo(() => assets.filter(a => a.isEnabled), [assets]);
-  const totalWealth = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
+  const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
+  const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
+  const totalWealth = totalAssets - totalLiabilities; // Net Worth
   const totalCash = useMemo(() => 
     activeAssets
       .filter(a => a.type === 'Cash')
@@ -245,7 +386,7 @@ export default function App() {
       <div className="hidden lg:block lg:w-64 xl:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:bg-slate-50/50 lg:dark:bg-slate-950/50 shrink-0 overflow-y-auto">
         <Sidebar 
           params={params} 
-          setParams={setParams} 
+          setParams={updateParams} 
           assets={assets}
           onUpdateAsset={updateAsset}
         />
@@ -261,7 +402,7 @@ export default function App() {
           <div className="fixed inset-y-0 left-0 z-50 w-80 transform transition-transform duration-300 ease-in-out lg:hidden">
             <Sidebar 
               params={params} 
-              setParams={setParams} 
+              setParams={updateParams} 
               assets={assets}
               onUpdateAsset={updateAsset}
               onClose={() => setIsSidebarOpen(false)}
@@ -291,6 +432,23 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {user ? (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-widest text-indigo-700 hover:bg-indigo-100 transition-all shadow-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              ) : (
+                <button
+                  onClick={handleLogin}
+                  className="flex items-center gap-2 px-3 py-2 bg-indigo-600 border border-indigo-700 rounded-lg text-xs font-bold uppercase tracking-widest text-white hover:bg-indigo-700 transition-all shadow-sm"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign In to Save
+                </button>
+              )}
               <button
                 onClick={() => setCurrency(currency === 'USD' ? 'EUR' : 'USD')}
                 className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
@@ -328,7 +486,7 @@ export default function App() {
             <MetricCard
               title={params.marketCrash > 0 ? t('crashedNetWorth') : t('netWorth')}
               value={formatCurrency(params.marketCrash > 0 ? totalWealth * (1 - params.marketCrash) : totalWealth, currency)}
-              subtitle={params.marketCrash > 0 ? `${t('originalValue')}: ${formatCurrency(totalWealth, currency)}` : t('netWorthSubtitle')}
+              subtitle={params.marketCrash > 0 ? `${t('originalValue')}: ${formatCurrency(totalWealth, currency)}` : `${t('netWorthCalculation')}`}
               icon={<Wallet className="w-5 h-5" />}
             />
             <MetricCard
@@ -369,7 +527,7 @@ export default function App() {
               <PortfolioChart assets={activeAssets} />
               <AggressivenessCard 
                 aggressiveness={params.aggressiveness}
-                onChange={(v) => setParams({ ...params, aggressiveness: v })}
+                onChange={(v) => updateParams({ ...params, aggressiveness: v })}
                 totalWealth={totalWealth}
                 currency={currency}
               />
@@ -474,6 +632,15 @@ export default function App() {
             onUpdateAsset={updateAsset} 
             onAddAsset={addAsset}
             onDeleteAsset={deleteAsset}
+          />
+
+          {/* Liabilities */}
+          <LiabilitiesTable
+            liabilities={liabilities}
+            currency={currency}
+            onUpdateLiability={updateLiability}
+            onAddLiability={addLiability}
+            onDeleteLiability={deleteLiability}
           />
         </div>
       </main>

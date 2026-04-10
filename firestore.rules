@@ -1,15 +1,188 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (matches request.auth.uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - settings: map (optional)
+    //
+    // Collection: users/{userId}/assets
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required, matches parent)
+    //   - account: string (required)
+    //   - ticker: string (required)
+    //   - type: string (required)
+    //   - taxStatus: string (required)
+    //   - qty: number (optional)
+    //   - price: number (optional)
+    //   - beta: number (optional)
+    //   - total: number (required)
+    //   - isEnabled: boolean (required)
+    //
+    // Collection: users/{userId}/liabilities
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required, matches parent)
+    //   - name: string (required)
+    //   - type: string (required)
+    //   - balance: number (required)
+    //   - interestRate: number (required)
+    //   - minimumPayment: number (required)
+    //
+    // Collection: users/{userId}/historicalNetWorth
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required, matches parent)
+    //   - date: string (required)
+    //   - totalAssets: number (required)
+    //   - totalLiabilities: number (required)
+    //   - netWorth: number (required)
+    //
+    // Collection: users/{userId}/realEstate
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required, matches parent)
+    //   - name: string (required)
+    //   - value: number (required)
+    //   - mortgageBalance: number (required)
+    //   - interestRate: number (required)
+    //   - propertyTax: number (required)
+    //   - rentalIncome: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    // Allow read for authenticated users
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= minLen && 
+             request.resource.data[field].size() <= maxLen;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUserProfile(userId) {
+      return hasRequiredFields(['uid', 'email']) &&
+             request.resource.data.uid == userId &&
+             isValidEmail(request.resource.data.email) &&
+             (!('settings' in request.resource.data) || request.resource.data.settings is map);
+    }
+
+    function isValidAsset(userId) {
+      return hasRequiredFields(['userId', 'account', 'ticker', 'type', 'taxStatus', 'total', 'isEnabled']) &&
+             request.resource.data.userId == userId &&
+             isValidStringLength('account', 1, 100) &&
+             isValidStringLength('ticker', 1, 50) &&
+             isValidStringLength('type', 1, 50) &&
+             isValidStringLength('taxStatus', 1, 50) &&
+             request.resource.data.total is number &&
+             request.resource.data.isEnabled is bool &&
+             (!('qty' in request.resource.data) || request.resource.data.qty is number) &&
+             (!('price' in request.resource.data) || request.resource.data.price is number) &&
+             (!('beta' in request.resource.data) || request.resource.data.beta is number);
+    }
+
+    function isValidLiability(userId) {
+      return hasRequiredFields(['userId', 'name', 'type', 'balance', 'interestRate', 'minimumPayment']) &&
+             request.resource.data.userId == userId &&
+             isValidStringLength('name', 1, 100) &&
+             request.resource.data.type in ['Mortgage', 'Student Loan', 'Credit Card', 'Auto Loan', 'Other'] &&
+             request.resource.data.balance is number &&
+             request.resource.data.interestRate is number &&
+             request.resource.data.minimumPayment is number;
+    }
+
+    function isValidHistoricalNetWorth(userId) {
+      return hasRequiredFields(['userId', 'date', 'totalAssets', 'totalLiabilities', 'netWorth']) &&
+             request.resource.data.userId == userId &&
+             request.resource.data.date is string &&
+             request.resource.data.totalAssets is number &&
+             request.resource.data.totalLiabilities is number &&
+             request.resource.data.netWorth is number;
+    }
+
+    function isValidRealEstateProperty(userId) {
+      return hasRequiredFields(['userId', 'name', 'value', 'mortgageBalance', 'interestRate', 'propertyTax', 'rentalIncome']) &&
+             request.resource.data.userId == userId &&
+             isValidStringLength('name', 1, 100) &&
+             request.resource.data.value is number &&
+             request.resource.data.mortgageBalance is number &&
+             request.resource.data.interestRate is number &&
+             request.resource.data.propertyTax is number &&
+             request.resource.data.rentalIncome is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
     match /prices/{symbol} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); // For now, we allow authenticated users to update prices. We will tighten this later.
+      allow write: if isAuthenticated();
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(userId);
+      allow update: if isOwner(userId) && isValidUserProfile(userId) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(userId);
+
+      match /assets/{assetId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAsset(userId);
+        allow update: if isOwner(userId) && isValidAsset(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /liabilities/{liabilityId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidLiability(userId);
+        allow update: if isOwner(userId) && isValidLiability(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /historicalNetWorth/{recordId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHistoricalNetWorth(userId);
+        allow update: if isOwner(userId) && isValidHistoricalNetWorth(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+
+      match /realEstate/{propertyId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidRealEstateProperty(userId);
+        allow update: if isOwner(userId) && isValidRealEstateProperty(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
     }
   }
 }

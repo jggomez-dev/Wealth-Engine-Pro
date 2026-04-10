@@ -1,5 +1,6 @@
 export type AssetType = 'Domestic Stock' | 'International Stock' | 'Cash' | 'Private' | 'Real Estate';
 export type TaxStatus = 'Pre-Tax' | 'Post-Tax' | 'Locked';
+export type LiabilityType = 'Mortgage' | 'Student Loan' | 'Credit Card' | 'Auto Loan' | 'Other';
 
 export interface Asset {
   id: string;
@@ -12,6 +13,15 @@ export interface Asset {
   price?: number;
   total: number;
   isEnabled: boolean;
+}
+
+export interface Liability {
+  id: string;
+  name: string;
+  type: LiabilityType;
+  balance: number;
+  interestRate: number;
+  minimumPayment: number;
 }
 
 export interface SimulationParams {

@@ -1,22 +1,119 @@
 {
   "entities": {
-    "StockPrice": {
-      "title": "StockPrice",
-      "description": "Stores the daily closing price of a stock or mutual fund.",
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Stores user settings and simulation parameters.",
       "type": "object",
       "properties": {
-        "symbol": { "type": "string", "description": "The ticker symbol (e.g., VTIAX)" },
-        "price": { "type": "number", "description": "The closing price" },
-        "date": { "type": "string", "format": "date", "description": "The date of the price (YYYY-MM-DD)" },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of when the price was fetched" }
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "monthlySpend": { "type": "number" },
+            "monthlySavings": { "type": "number" },
+            "retirementYears": { "type": "number" },
+            "expectedReturn": { "type": "number" },
+            "realEstateReturn": { "type": "number" },
+            "volatility": { "type": "number" },
+            "withdrawalRate": { "type": "number" },
+            "inflationRate": { "type": "number" },
+            "taxRate": { "type": "number" },
+            "marketCrash": { "type": "number" },
+            "careerAdjustment": { "type": "number" },
+            "aggressiveness": { "type": "number" }
+          }
+        }
       },
-      "required": ["symbol", "price", "date", "updatedAt"]
+      "required": ["uid", "email"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "An individual financial asset.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "account": { "type": "string" },
+        "ticker": { "type": "string" },
+        "type": { "type": "string" },
+        "taxStatus": { "type": "string" },
+        "qty": { "type": "number" },
+        "price": { "type": "number" },
+        "beta": { "type": "number" },
+        "total": { "type": "number" },
+        "isEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "account", "ticker", "type", "taxStatus", "total", "isEnabled"]
+    },
+    "Liability": {
+      "title": "Liability",
+      "description": "A debt or liability.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "balance": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "minimumPayment": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "type", "balance", "interestRate", "minimumPayment"]
+    },
+    "HistoricalNetWorth": {
+      "title": "HistoricalNetWorth",
+      "description": "A snapshot of net worth at a specific point in time.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "totalAssets": { "type": "number" },
+        "totalLiabilities": { "type": "number" },
+        "netWorth": { "type": "number" }
+      },
+      "required": ["userId", "date", "totalAssets", "totalLiabilities", "netWorth"]
+    },
+    "RealEstateProperty": {
+      "title": "RealEstateProperty",
+      "description": "Detailed real estate property information.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "value": { "type": "number" },
+        "mortgageBalance": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "propertyTax": { "type": "number" },
+        "rentalIncome": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "value", "mortgageBalance", "interestRate", "propertyTax", "rentalIncome"]
     }
   },
   "firestore": {
-    "/prices/{symbol}": {
-      "schema": "StockPrice",
-      "description": "Daily stock prices keyed by symbol."
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles containing settings."
+    },
+    "/users/{userId}/assets/{assetId}": {
+      "schema": "Asset",
+      "description": "User's financial assets."
+    },
+    "/users/{userId}/liabilities/{liabilityId}": {
+      "schema": "Liability",
+      "description": "User's debts and liabilities."
+    },
+    "/users/{userId}/historicalNetWorth/{recordId}": {
+      "schema": "HistoricalNetWorth",
+      "description": "User's historical net worth snapshots."
+    },
+    "/users/{userId}/realEstate/{propertyId}": {
+      "schema": "RealEstateProperty",
+      "description": "User's detailed real estate properties."
     }
   }
 }
