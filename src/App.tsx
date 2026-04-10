@@ -33,6 +33,7 @@ const INITIAL_ASSETS: Asset[] = [
 export default function App() {
   const { t, language, setLanguage } = useLanguage();
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
+  const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
@@ -241,6 +242,12 @@ export default function App() {
             </div>
             <div className="flex items-center gap-4">
               <button
+                onClick={() => setCurrency(currency === 'USD' ? 'EUR' : 'USD')}
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+              >
+                {currency}
+              </button>
+              <button
                 onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}
                 className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
               >
@@ -270,13 +277,13 @@ export default function App() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
             <MetricCard
               title={t('netWorth')}
-              value={formatCurrency(totalWealth)}
+              value={formatCurrency(totalWealth, currency)}
               subtitle={t('netWorthSubtitle')}
               icon={<Wallet className="w-5 h-5" />}
             />
             <MetricCard
               title={t('effectiveWealth')}
-              value={formatCurrency(effectiveWealth)}
+              value={formatCurrency(effectiveWealth, currency)}
               subtitle={t('effectiveWealthSubtitle')}
               icon={<Target className="w-5 h-5" />}
               info={`Effective Wealth is your Net Worth adjusted for future taxes (${(params.taxRate * 100).toFixed(0)}% haircut on Pre-Tax assets) and liquidity (10% haircut on Locked assets like Real Estate or Private Equity).`}
@@ -284,20 +291,20 @@ export default function App() {
             <MetricCard
               title={t('timeToFi')}
               value={fiYear !== null ? `${fiYear.toFixed(1)} ${t('years')}` : t('never')}
-              subtitle={`${t('fiTarget')}: ${formatCurrency(fiTarget)}`}
+              subtitle={`${t('fiTarget')}: ${formatCurrency(fiTarget, currency)}`}
               icon={<Target className="w-5 h-5" />}
               progress={totalWealth / fiTarget}
             />
             <MetricCard
               title={t('monthlySavings')}
-              value={formatCurrency(params.monthlySavings)}
+              value={formatCurrency(params.monthlySavings, currency)}
               subtitle={t('monthlySavingsSubtitle')}
               icon={<TrendingUp className="w-5 h-5" />}
             />
             <MetricCard
               title={t('liquidityRunway')}
               value={`${runwayMonths.toFixed(1)} ${t('months')}`}
-              subtitle={`${t('liquidityRunwaySubtitle')}: ${formatCurrency(liquidCash)}`}
+              subtitle={`${t('liquidityRunwaySubtitle')}: ${formatCurrency(liquidCash, currency)}`}
               icon={<Timer className="w-5 h-5" />}
               progress={runwayMonths / 24}
               info="Liquidity Runway measures how many months you can sustain your current spending using only immediately accessible cash (excluding retirement accounts like IRAs and 401ks)."
@@ -331,7 +338,7 @@ export default function App() {
                           <span className="text-[10px] font-bold text-slate-400">{percentage.toFixed(1)}% {t('ofTotal')}</span>
                         </div>
                         <span className={`text-sm font-mono font-bold ${item.color} shrink-0`}>
-                          {formatCurrency(value)}
+                          {formatCurrency(value, currency)}
                         </span>
                       </div>
                     );
@@ -372,13 +379,14 @@ export default function App() {
             <HealthCard
               title={t('safeWithdrawal')}
               status={params.withdrawalRate > 0.05 ? 'error' : params.withdrawalRate > 0.04 ? 'warning' : 'success'}
-              message={`${t('yearly')}: ${formatCurrency(totalWealth * params.withdrawalRate)} | ${t('monthly')}: ${formatCurrency((totalWealth * params.withdrawalRate) / 12)}`}
+              message={`${t('yearly')}: ${formatCurrency(totalWealth * params.withdrawalRate, currency)} | ${t('monthly')}: ${formatCurrency((totalWealth * params.withdrawalRate) / 12, currency)}`}
             />
           </div>
 
           {/* Ledger */}
           <LedgerTable 
             assets={assets} 
+            currency={currency}
             onUpdateAsset={updateAsset} 
             onAddAsset={addAsset}
             onDeleteAsset={deleteAsset}

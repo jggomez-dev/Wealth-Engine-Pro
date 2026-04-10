@@ -7,12 +7,13 @@ import { useLanguage } from '../lib/LanguageContext';
 
 interface LedgerTableProps {
   assets: Asset[];
+  currency: 'USD' | 'EUR';
   onUpdateAsset: (id: string, updates: Partial<Asset>) => void;
   onAddAsset: (asset: Omit<Asset, 'id'>) => void;
   onDeleteAsset: (id: string) => void;
 }
 
-export default function LedgerTable({ assets, onUpdateAsset, onAddAsset, onDeleteAsset }: LedgerTableProps) {
+export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsset, onDeleteAsset }: LedgerTableProps) {
   const { t } = useLanguage();
   const [isAdding, setIsAdding] = useState(false);
   const [newAsset, setNewAsset] = useState<Omit<Asset, 'id'>>({
@@ -246,7 +247,7 @@ export default function LedgerTable({ assets, onUpdateAsset, onAddAsset, onDelet
                         )}
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-xs lg:text-sm font-mono text-slate-600 text-right">
-                        {asset.price ? formatCurrency(asset.price) : '—'}
+                        {asset.price ? formatCurrency(asset.price, currency) : '—'}
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-right">
                         {asset.qty === 0 ? (
@@ -258,7 +259,7 @@ export default function LedgerTable({ assets, onUpdateAsset, onAddAsset, onDelet
                           />
                         ) : (
                           <span className="text-xs lg:text-sm font-mono font-bold text-slate-900 pr-1">
-                            {formatCurrency(asset.total)}
+                            {formatCurrency(asset.total, currency)}
                           </span>
                         )}
                       </td>
@@ -279,7 +280,7 @@ export default function LedgerTable({ assets, onUpdateAsset, onAddAsset, onDelet
                       {account} {t('total')}
                     </td>
                     <td className="px-6 py-2 text-right text-xs font-mono font-bold text-slate-600">
-                      {formatCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + a.total, 0))}
+                      {formatCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + a.total, 0), currency)}
                     </td>
                     <td></td>
                   </tr>
