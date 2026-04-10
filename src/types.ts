@@ -26,6 +26,7 @@ export interface SimulationParams {
   taxRate: number;
   marketCrash: number;
   careerAdjustment: number;
+  aggressiveness: number; // 0: Conservative, 1: Moderate, 2: Aggressive, 3: Super Aggressive
 }
 
 export interface SimulationPath {

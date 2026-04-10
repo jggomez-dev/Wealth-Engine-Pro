@@ -6,9 +6,9 @@ import { formatCurrency, cn } from './lib/utils';
 import Sidebar from './components/Sidebar';
 import MetricCard from './components/MetricCard';
 import PortfolioChart from './components/PortfolioChart';
+import AggressivenessCard from './components/AggressivenessCard';
 import ProjectionChart from './components/ProjectionChart';
 import LedgerTable from './components/LedgerTable';
-import RebalancingCard from './components/RebalancingCard';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
@@ -48,6 +48,7 @@ export default function App() {
     taxRate: 0.25,
     marketCrash: 0,
     careerAdjustment: 0,
+    aggressiveness: 1, // Default to Moderate
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -205,10 +206,28 @@ export default function App() {
 
   const weightedExpectedReturn = useMemo(() => {
     if (totalWealth === 0) return params.expectedReturn;
-    const reWealth = activeAssets.filter(a => a.type === 'Real Estate').reduce((sum, a) => sum + a.total, 0);
-    const otherWealth = totalWealth - reWealth;
-    return (reWealth * params.realEstateReturn + otherWealth * params.expectedReturn) / totalWealth;
-  }, [activeAssets, totalWealth, params.expectedReturn, params.realEstateReturn]);
+    
+    // Aggressiveness mapping:
+    // 0 (Conservative): Stocks 40%, Real Estate 40%, Cash 20%
+    // 1 (Moderate): Stocks 60%, Real Estate 30%, Cash 10%
+    // 2 (Aggressive): Stocks 80%, Real Estate 15%, Cash 5%
+    // 3 (Super Aggressive): Stocks 95%, Real Estate 5%, Cash 0%
+    
+    const allocations = [
+      { stocks: 0.4, re: 0.4, cash: 0.2 },
+      { stocks: 0.6, re: 0.3, cash: 0.1 },
+      { stocks: 0.8, re: 0.15, cash: 0.05 },
+      { stocks: 0.95, re: 0.05, cash: 0 },
+    ][params.aggressiveness];
+
+    // In a real app, we'd adjust the actual asset allocations.
+    // For now, we adjust the expected return based on the aggressiveness slider.
+    const baseReturn = params.expectedReturn;
+    const reReturn = params.realEstateReturn;
+    const cashReturn = 0.02; // Assume 2% cash return
+
+    return (allocations.stocks * baseReturn) + (allocations.re * reReturn) + (allocations.cash * cashReturn);
+  }, [totalWealth, params.expectedReturn, params.realEstateReturn, params.aggressiveness]);
 
   const fiYear = useMemo(() => 
     calculateFIYear(effectiveWealth, params.monthlySpend, params.monthlySavings, weightedExpectedReturn, params.withdrawalRate, params.inflationRate, params.careerAdjustment),
@@ -348,7 +367,12 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-6">
             <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
               <PortfolioChart assets={activeAssets} />
-              <RebalancingCard assets={activeAssets} />
+              <AggressivenessCard 
+                aggressiveness={params.aggressiveness}
+                onChange={(v) => setParams({ ...params, aggressiveness: v })}
+                totalWealth={totalWealth}
+                currency={currency}
+              />
             </div>
             <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
               <TaxBreakdownChart assets={activeAssets} />
