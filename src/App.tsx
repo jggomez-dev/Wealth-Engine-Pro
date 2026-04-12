@@ -12,7 +12,8 @@ import LedgerTable from './components/LedgerTable';
 import LiabilitiesTable from './components/LiabilitiesTable';
 import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut } from 'lucide-react';
+import { HealthcareCalculator } from './components/HealthcareCalculator';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -46,6 +47,7 @@ export default function App() {
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare'>('dashboard');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -542,8 +544,44 @@ export default function App() {
             </div>
           </div>
 
-          {/* Top Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+          {/* Navigation Tabs */}
+          <div className="flex border-b border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                activeTab === 'dashboard' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Financial Dashboard
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('healthcare')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                activeTab === 'healthcare' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Healthcare Costs
+              </div>
+            </button>
+          </div>
+
+          {activeTab === 'healthcare' ? (
+            <HealthcareCalculator />
+          ) : (
+            <>
+              {/* Top Metrics */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
             <MetricCard
               title={params.marketCrash > 0 ? t('crashedNetWorth') : t('netWorth')}
               value={formatCurrency(params.marketCrash > 0 ? totalWealth * (1 - params.marketCrash) : totalWealth, currency)}
@@ -712,6 +750,8 @@ export default function App() {
             onAddLiability={addLiability}
             onDeleteLiability={deleteLiability}
           />
+            </>
+          )}
         </div>
       </main>
     </div>
