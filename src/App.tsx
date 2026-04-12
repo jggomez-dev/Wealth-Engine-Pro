@@ -557,7 +557,7 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4" />
-                Financial Dashboard
+                {t('financialDashboard')}
               </div>
             </button>
             <button
@@ -571,7 +571,7 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
-                Healthcare Costs
+                {t('healthcareCosts')}
               </div>
             </button>
           </div>

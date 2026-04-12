@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Calculator, Info, DollarSign, Users, AlertCircle, MapPin } from 'lucide-react';
+import { useLanguage } from '../lib/LanguageContext';
 
 // 2024 FPL Guidelines (48 Contiguous States)
 const FPL_BASE = 15060;
@@ -55,6 +56,7 @@ const getAgeMultiplier = (age: number) => {
 const BASE_PREMIUM_21 = 450;
 
 export const HealthcareCalculator: React.FC = () => {
+  const { t } = useLanguage();
   const [usState, setUsState] = useState<string>('');
   const [zipCode, setZipCode] = useState<string>('');
   const [income, setIncome] = useState<number | ''>(50000);
@@ -157,8 +159,8 @@ export const HealthcareCalculator: React.FC = () => {
             <Calculator className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">ACA Premium Tax Credit Estimator</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Estimate your health insurance costs and subsidies</p>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('acaEstimator')}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{t('acaEstimatorDesc')}</p>
           </div>
         </div>
       </div>
@@ -169,7 +171,7 @@ export const HealthcareCalculator: React.FC = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                State
+                {t('state')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -180,7 +182,7 @@ export const HealthcareCalculator: React.FC = () => {
                   onChange={(e) => setUsState(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-indigo-500 focus:border-indigo-500 appearance-none"
                 >
-                  <option value="">Select State</option>
+                  <option value="">{t('selectState')}</option>
                   {US_STATES.map(s => (
                     <option key={s.code} value={s.code}>{s.name}</option>
                   ))}
@@ -190,7 +192,7 @@ export const HealthcareCalculator: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Zip Code
+                {t('zipCode')}
               </label>
               <input
                 type="text"
@@ -205,7 +207,7 @@ export const HealthcareCalculator: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Estimated Annual Household Income
+              {t('annualIncome')}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -224,7 +226,7 @@ export const HealthcareCalculator: React.FC = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Number of Adults
+                {t('numAdults')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -243,7 +245,7 @@ export const HealthcareCalculator: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Number of Children
+                {t('numChildren')}
               </label>
               <input
                 type="number"
@@ -259,7 +261,7 @@ export const HealthcareCalculator: React.FC = () => {
           {adults.length > 0 && (
             <div className="pt-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
-                Adult Ages
+                {t('adultAges')}
               </label>
               <div className="grid grid-cols-2 gap-3">
                 {adults.map((adult, index) => (
@@ -283,27 +285,27 @@ export const HealthcareCalculator: React.FC = () => {
 
         {/* Results */}
         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-6">Estimated Monthly Costs</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-6">{t('estimatedMonthlyCosts')}</h3>
           
           <div className="space-y-4">
             <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="text-slate-600 dark:text-slate-400">Estimated Benchmark Premium</span>
+              <span className="text-slate-600 dark:text-slate-400">{t('benchmarkPremium')}</span>
               <span className="font-medium text-slate-900 dark:text-slate-100">
                 ${Math.round(results.totalBenchmarkPremium).toLocaleString()}
               </span>
             </div>
             
             <div className="flex justify-between items-center py-2 border-b border-slate-200 dark:border-slate-700">
-              <span className="text-slate-600 dark:text-slate-400">Premium Tax Credit (Subsidy)</span>
+              <span className="text-slate-600 dark:text-slate-400">{t('taxCredit')}</span>
               <span className="font-medium text-emerald-600 dark:text-emerald-400">
                 -${Math.round(results.taxCredit).toLocaleString()}
               </span>
             </div>
 
             <div className="flex justify-between items-center py-4">
-              <span className="text-lg font-semibold text-slate-900 dark:text-slate-100">Your Estimated Premium</span>
+              <span className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('estimatedPremium')}</span>
               <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                ${Math.round(results.netPremium).toLocaleString()}<span className="text-sm font-normal text-slate-500">/mo</span>
+                ${Math.round(results.netPremium).toLocaleString()}<span className="text-sm font-normal text-slate-500">/{t('monthly').toLowerCase()}</span>
               </span>
             </div>
           </div>
@@ -311,19 +313,19 @@ export const HealthcareCalculator: React.FC = () => {
           <div className="mt-8 space-y-3 bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
             <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Info className="w-4 h-4 text-indigo-500" />
-              Calculation Details
+              {t('calcDetails')}
             </h4>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="block text-slate-500 dark:text-slate-400">Household Size</span>
-                <span className="font-medium text-slate-900 dark:text-slate-100">{householdSize} people</span>
+                <span className="block text-slate-500 dark:text-slate-400">{t('householdSize')}</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">{householdSize} {t('people')}</span>
               </div>
               <div>
-                <span className="block text-slate-500 dark:text-slate-400">Income vs FPL</span>
+                <span className="block text-slate-500 dark:text-slate-400">{t('incomeVsFpl')}</span>
                 <span className="font-medium text-slate-900 dark:text-slate-100">{Math.round(results.fplPercentage)}% of FPL</span>
               </div>
               <div>
-                <span className="block text-slate-500 dark:text-slate-400">Max Income Contribution</span>
+                <span className="block text-slate-500 dark:text-slate-400">{t('maxIncomeContribution')}</span>
                 <span className="font-medium text-slate-900 dark:text-slate-100">{(results.contributionPct * 100).toFixed(2)}%</span>
               </div>
             </div>
@@ -331,9 +333,14 @@ export const HealthcareCalculator: React.FC = () => {
 
           <div className="mt-4 flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-200 dark:border-amber-800/30">
             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
-            <p>
-              This is a simplified estimate based on national averages and the Inflation Reduction Act. Actual premiums vary significantly by zip code, state, and specific plan chosen.
-            </p>
+            <div className="space-y-2">
+              <p>
+                {t('acaDisclaimer')}
+              </p>
+              <p className="font-medium">
+                {t('planExplanation')}
+              </p>
+            </div>
           </div>
         </div>
       </div>
