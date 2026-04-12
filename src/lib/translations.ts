@@ -112,8 +112,6 @@ export const translations = {
     historicalNetWorthSubtitle: 'Track your wealth over time',
     recordNetWorth: 'Record Current Net Worth',
     date: 'Date',
-    signIn: 'Sign In to Save',
-    signOut: 'Sign Out',
   },
   es: {
     appName: 'Wealth Engine',
@@ -226,7 +224,5 @@ export const translations = {
     historicalNetWorthSubtitle: 'Rastrea tu riqueza a lo largo del tiempo',
     recordNetWorth: 'Registrar Patrimonio Actual',
     date: 'Fecha',
-    signIn: 'Iniciar Sesión',
-    signOut: 'Cerrar Sesión',
   }
 };

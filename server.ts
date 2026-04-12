@@ -6,6 +6,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 import yahooFinance from 'yahoo-finance2';
 const yf = new yahooFinance();
 
+import fs from 'fs';
+
 // Lazy initialization for Firebase Admin
 let db: any = null;
 
@@ -24,7 +26,17 @@ function getDb() {
         credential: cert(JSON.parse(serviceAccount)),
       });
     }
-    db = getFirestore();
+    // Read the database ID from the config file
+    let databaseId = undefined;
+    try {
+      const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+      const configData = fs.readFileSync(configPath, 'utf8');
+      const config = JSON.parse(configData);
+      databaseId = config.firestoreDatabaseId;
+    } catch (e) {
+      console.warn("Could not load firebase-applet-config.json");
+    }
+    db = getFirestore(databaseId);
     return db;
   } catch (error) {
     console.error("Failed to initialize Firebase Admin:", error);

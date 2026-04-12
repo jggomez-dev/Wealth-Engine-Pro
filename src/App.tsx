@@ -65,6 +65,7 @@ export default function App() {
   const [coachPrompt, setCoachPrompt] = useState('');
   const [coachResponse, setCoachResponse] = useState('');
   const [isCoaching, setIsCoaching] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const askCoach = async () => {
     if (!coachPrompt.trim()) return;
@@ -232,6 +233,9 @@ export default function App() {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
       const result = await signInWithPopup(auth, provider);
       
       // Check if user profile exists, if not, create it with current local state
@@ -251,8 +255,15 @@ export default function App() {
         });
         await batch.commit();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed:", error);
+      if (error.code === 'auth/popup-closed-by-user') {
+        setErrorMessage("The login popup was closed before completing. Please try again and keep the window open until login finishes.");
+      } else if (error.code === 'auth/popup-blocked') {
+        setErrorMessage("The login popup was blocked by your browser. Please allow popups for this site and try again.");
+      } else {
+        setErrorMessage(`Login failed: ${error.message}`);
+      }
     }
   };
 
@@ -335,7 +346,7 @@ export default function App() {
 
   const recordNetWorth = () => {
     if (!user) {
-      alert("Please sign in to save historical data.");
+      setErrorMessage("Please sign in to save historical data.");
       return;
     }
     const id = Math.random().toString(36).substr(2, 9);
@@ -422,7 +433,6 @@ export default function App() {
           params={params} 
           setParams={updateParams} 
           assets={assets}
-          currency={currency}
           onUpdateAsset={updateAsset}
         />
       </div>
@@ -439,7 +449,6 @@ export default function App() {
               params={params} 
               setParams={updateParams} 
               assets={assets}
-              currency={currency}
               onUpdateAsset={updateAsset}
               onClose={() => setIsSidebarOpen(false)}
             />
@@ -449,6 +458,20 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto pt-8 lg:pt-12 p-4 lg:p-8 min-w-0">
         <div id="dashboard-content" className="max-w-[95rem] mx-auto space-y-6 lg:space-y-8">
+          {/* Error Toast */}
+          {errorMessage && (
+            <div className="fixed top-4 right-4 z-50 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg shadow-lg flex items-start gap-3 max-w-md animate-in fade-in slide-in-from-top-4">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="flex-1 text-sm font-medium">{errorMessage}</div>
+              <button 
+                onClick={() => setErrorMessage(null)}
+                className="p-1 hover:bg-rose-100 rounded-md transition-colors shrink-0"
+              >
+                <CloseIcon className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div className="flex items-center gap-4 w-full md:w-auto">
@@ -474,7 +497,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-widest text-indigo-700 hover:bg-indigo-100 transition-all shadow-sm"
                 >
                   <LogOut className="w-4 h-4" />
-                  {t('signOut')}
+                  Sign Out
                 </button>
               ) : (
                 <button
@@ -482,7 +505,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-600 border border-indigo-700 rounded-lg text-xs font-bold uppercase tracking-widest text-white hover:bg-indigo-700 transition-all shadow-sm"
                 >
                   <LogIn className="w-4 h-4" />
-                  {t('signIn')}
+                  Sign In to Save
                 </button>
               )}
               <button
