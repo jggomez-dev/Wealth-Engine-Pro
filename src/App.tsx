@@ -261,6 +261,8 @@ export default function App() {
         setErrorMessage("The login popup was closed before completing. Please try again and keep the window open until login finishes.");
       } else if (error.code === 'auth/popup-blocked') {
         setErrorMessage("The login popup was blocked by your browser. Please allow popups for this site and try again.");
+      } else if (error.code === 'auth/unauthorized-domain') {
+        setErrorMessage("This domain is not authorized for Firebase Authentication. Please add it to the Authorized Domains in your Firebase Console.");
       } else {
         setErrorMessage(`Login failed: ${error.message}`);
       }
