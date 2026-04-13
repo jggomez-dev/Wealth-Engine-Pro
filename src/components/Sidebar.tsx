@@ -96,16 +96,6 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
             unit="%"
             onChange={(v) => handleChange('realEstateReturn', v / 100)}
           />
-          
-          <ControlGroup
-            label={t('marketVolatility')}
-            value={params.volatility * 100}
-            min={5}
-            max={40}
-            step={1}
-            unit="%"
-            onChange={(v) => handleChange('volatility', v / 100)}
-          />
 
           <ControlGroup
             label={t('withdrawalRate')}

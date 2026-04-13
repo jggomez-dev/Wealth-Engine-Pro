@@ -133,7 +133,7 @@ export const translations = {
     incomeVsFpl: 'Income vs FPL',
     maxIncomeContribution: 'Max Income Contribution',
     acaDisclaimer: 'This is a simplified estimate based on national averages and the Inflation Reduction Act. Actual premiums vary significantly by zip code, state, and specific plan chosen.',
-    planExplanation: 'The Benchmark Premium is based on the Second Lowest Cost Silver Plan (SLCSP) in your area. This is the standard plan used by the ACA to calculate your tax credit. You can use your subsidy to buy other metal tiers (Bronze, Gold), but the subsidy amount is fixed to this Silver plan.',
+    planExplanation: 'The Benchmark Premium is based on the Second Lowest Cost Silver Plan (SLCSP) in your area. This is the standard plan used by the ACA to calculate your tax credit. For 2026, standard Silver plans typically have deductibles around $6,000 for an individual ($12,000 for a family) and a legal out-of-pocket maximum of $10,600 for an individual ($21,200 for a family). You can use your subsidy to buy other metal tiers (Bronze, Gold), but the subsidy amount is fixed to this Silver plan.',
   },
   es: {
     appName: 'Wealth Engine',
@@ -267,6 +267,6 @@ export const translations = {
     incomeVsFpl: 'Ingreso vs FPL',
     maxIncomeContribution: 'Contribución Máxima de Ingresos',
     acaDisclaimer: 'Esta es una estimación simplificada basada en promedios nacionales y la Ley de Reducción de la Inflación. Las primas reales varían significativamente según el código postal, el estado y el plan específico elegido.',
-    planExplanation: 'La Prima de Referencia se basa en el Plan Plata de Segundo Menor Costo (SLCSP) en su área. Este es el plan estándar utilizado por la ACA para calcular su crédito fiscal. Puede usar su subsidio para comprar otros niveles (Bronce, Oro), pero el monto del subsidio está fijado a este plan Plata.',
+    planExplanation: 'La Prima de Referencia se basa en el Plan Plata de Segundo Menor Costo (SLCSP) en su área. Este es el plan estándar utilizado por la ACA para calcular su crédito fiscal. Para 2026, los planes Plata estándar suelen tener deducibles de alrededor de $6,000 para un individuo ($12,000 para una familia) y un límite máximo legal de gastos de bolsillo de $10,600 para un individuo ($21,200 para una familia). Puede usar su subsidio para comprar otros niveles (Bronce, Oro), pero el monto del subsidio está fijado a este plan Plata.',
   }
 };

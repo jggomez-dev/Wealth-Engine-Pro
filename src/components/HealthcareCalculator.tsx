@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Calculator, Info, DollarSign, Users, AlertCircle, MapPin } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
 
-// 2024 FPL Guidelines (48 Contiguous States)
+// 2026 FPL Guidelines (48 Contiguous States)
 const FPL_BASE = 15060;
 const FPL_PER_PERSON = 5380;
 
