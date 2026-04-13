@@ -24,10 +24,19 @@ export default function TaxBreakdownChart({ assets }: TaxBreakdownChartProps) {
       [t('locked')]: 0,
     };
     assets.forEach((asset) => {
-      const statusLabel = asset.taxStatus === 'Pre-Tax' ? t('preTax') :
-                         asset.taxStatus === 'Post-Tax' ? t('postTax') :
-                         asset.taxStatus === 'Locked' ? t('locked') : asset.taxStatus;
-      groups[statusLabel] = (groups[statusLabel] || 0) + asset.total;
+      if (!asset.isEnabled) return;
+      
+      if (asset.taxStatus === 'Roth') {
+        const basis = asset.basis || 0;
+        const earnings = Math.max(0, asset.total - basis);
+        groups[t('postTax')] += basis;
+        groups[t('locked')] += earnings;
+      } else {
+        const statusLabel = asset.taxStatus === 'Pre-Tax' ? t('preTax') :
+                           asset.taxStatus === 'Post-Tax' ? t('postTax') :
+                           asset.taxStatus === 'Locked' ? t('locked') : asset.taxStatus;
+        groups[statusLabel] = (groups[statusLabel] || 0) + asset.total;
+      }
     });
     const total = Object.values(groups).reduce((sum, v) => sum + v, 0);
     return Object.entries(groups).map(([name, value]) => ({ 

@@ -117,8 +117,21 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                 <option value="Pre-Tax">{t('preTax')}</option>
                 <option value="Post-Tax">{t('postTax')}</option>
                 <option value="Locked">{t('locked')}</option>
+                <option value="Roth">{t('roth')}</option>
               </select>
             </div>
+            {newAsset.taxStatus === 'Roth' && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('basis')}</label>
+                <input
+                  type="number"
+                  value={newAsset.basis || ''}
+                  onChange={e => setNewAsset(prev => ({ ...prev, basis: parseFloat(e.target.value) || 0 }))}
+                  placeholder="e.g. 6000"
+                  className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+            )}
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('qty')}/{t('total')}</label>
               <input
@@ -224,15 +237,30 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                         </span>
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4">
-                        <select
-                          value={asset.taxStatus}
-                          onChange={(e) => onUpdateAsset(asset.id, { taxStatus: e.target.value as any })}
-                          className="text-[9px] lg:text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 lg:px-2 py-0.5 rounded-full outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
-                        >
-                          <option value="Pre-Tax">{t('preTax')}</option>
-                          <option value="Post-Tax">{t('postTax')}</option>
-                          <option value="Locked">{t('locked')}</option>
-                        </select>
+                        <div className="flex flex-col gap-1">
+                          <select
+                            value={asset.taxStatus}
+                            onChange={(e) => onUpdateAsset(asset.id, { taxStatus: e.target.value as any })}
+                            className="text-[9px] lg:text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-1.5 lg:px-2 py-0.5 rounded-full outline-none focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer w-fit"
+                          >
+                            <option value="Pre-Tax">{t('preTax')}</option>
+                            <option value="Post-Tax">{t('postTax')}</option>
+                            <option value="Locked">{t('locked')}</option>
+                            <option value="Roth">{t('roth')}</option>
+                          </select>
+                          {asset.taxStatus === 'Roth' && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-[9px] text-slate-400">Basis:</span>
+                              <input
+                                type="number"
+                                value={asset.basis || ''}
+                                onChange={(e) => onUpdateAsset(asset.id, { basis: parseFloat(e.target.value) || 0 })}
+                                className="w-16 text-xs font-mono text-slate-600 dark:text-slate-300 bg-transparent hover:bg-white dark:hover:bg-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 outline-none transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-600"
+                                placeholder="0"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-right">
                         {asset.qty > 0 ? (

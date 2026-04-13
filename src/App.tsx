@@ -13,7 +13,8 @@ import LiabilitiesTable from './components/LiabilitiesTable';
 import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { HealthcareCalculator } from './components/HealthcareCalculator';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity } from 'lucide-react';
+import SabbaticalCalculator from './components/SabbaticalCalculator';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -47,7 +48,7 @@ export default function App() {
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical'>('dashboard');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -101,7 +102,7 @@ export default function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-      const response = await fetch(`/api/prices?tickers=${tickers}`, { signal: controller.signal });
+      const response = await fetch(`/api/prices?tickers=${encodeURIComponent(tickers)}`, { signal: controller.signal });
       clearTimeout(timeoutId);
       
       if (!response.ok) {
@@ -109,6 +110,14 @@ export default function App() {
         console.error(`Sync failed: ${response.status} ${response.statusText} - ${errorText}`);
         throw new Error(`Sync failed: ${response.statusText}`);
       }
+      
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error(`Expected JSON but got ${contentType}:`, text.substring(0, 100));
+        throw new Error("Received non-JSON response from server");
+      }
+      
       const priceMap = await response.json();
       
       setAssets(prev => prev.map(asset => {
@@ -139,8 +148,13 @@ export default function App() {
     const checkHealth = async () => {
       try {
         const res = await fetch('/api/health');
-        const data = await res.json();
-        console.log('Server health check:', data);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          console.log('Server health check:', data);
+        } else {
+          console.log('Server health check returned non-JSON response');
+        }
       } catch (e) {
         console.error('Server health check failed:', e);
       }
@@ -371,12 +385,16 @@ export default function App() {
       .reduce((sum, a) => sum + a.total, 0), 
     [activeAssets]
   );
-  const liquidCash = useMemo(() => 
-    activeAssets
-      .filter(a => a.type === 'Cash' && !a.account.toLowerCase().includes('ira') && !a.account.toLowerCase().includes('401k'))
-      .reduce((sum, a) => sum + a.total, 0), 
-    [activeAssets]
-  );
+  const liquidCash = useMemo(() => {
+    return activeAssets.reduce((sum, a) => {
+      if (a.taxStatus === 'Roth') {
+        return sum + (a.basis || 0);
+      } else if (a.type === 'Cash' && !a.account.toLowerCase().includes('ira') && !a.account.toLowerCase().includes('401k')) {
+        return sum + a.total;
+      }
+      return sum;
+    }, 0);
+  }, [activeAssets]);
   const runwayMonths = useMemo(() => calculateRunway(liquidCash, params.monthlySpend), [liquidCash, params.monthlySpend]);
   const portfolioBeta = useMemo(() => calculatePortfolioBeta(activeAssets), [activeAssets]);
   
@@ -389,6 +407,12 @@ export default function App() {
       }
       if (a.taxStatus === 'Locked') {
         return sum + (a.total * 0.9); // Reduced to 10% haircut for illiquidity
+      }
+      if (a.taxStatus === 'Roth') {
+        const basis = a.basis || 0;
+        const earnings = Math.max(0, a.total - basis);
+        // Basis is liquid (1.0), earnings are locked (0.9)
+        return sum + basis + (earnings * 0.9);
       }
       return sum + a.total;
     }, 0);
@@ -574,10 +598,31 @@ export default function App() {
                 {t('healthcareCosts')}
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('sabbatical')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                activeTab === 'sabbatical' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4" />
+                {t('sabbaticalTab')}
+              </div>
+            </button>
           </div>
 
           {activeTab === 'healthcare' ? (
             <HealthcareCalculator />
+          ) : activeTab === 'sabbatical' ? (
+            <SabbaticalCalculator 
+              assets={assets}
+              expectedReturn={params.expectedReturn}
+              realEstateReturn={params.realEstateReturn}
+              monthlySpend={params.monthlySpend}
+            />
           ) : (
             <>
               {/* Top Metrics */}
@@ -638,25 +683,43 @@ export default function App() {
                   {t('taxStrategy')}
                 </h3>
                 <div className="space-y-3">
-                  {[
-                    { label: t('postTax'), status: 'Post-Tax', color: 'text-emerald-600' },
-                    { label: t('preTax'), status: 'Pre-Tax', color: 'text-indigo-600' },
-                    { label: t('locked'), status: 'Locked', color: 'text-amber-600' },
-                  ].map((item) => {
-                    const value = assets.filter(a => a.taxStatus === item.status).reduce((sum, a) => sum + a.total, 0);
-                    const percentage = totalWealth > 0 ? (value / totalWealth) * 100 : 0;
-                    return (
-                      <div key={item.status} className="flex justify-between items-center gap-2">
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs text-slate-500 truncate">{item.label}</span>
-                          <span className="text-[10px] font-bold text-slate-400">{percentage.toFixed(1)}% {t('ofTotal')}</span>
+                  {(() => {
+                    const taxGroups = {
+                      'Post-Tax': 0,
+                      'Pre-Tax': 0,
+                      'Locked': 0,
+                    };
+                    activeAssets.forEach(a => {
+                      if (a.taxStatus === 'Roth') {
+                        const basis = a.basis || 0;
+                        const earnings = Math.max(0, a.total - basis);
+                        taxGroups['Post-Tax'] += basis;
+                        taxGroups['Locked'] += earnings;
+                      } else if (a.taxStatus === 'Pre-Tax' || a.taxStatus === 'Post-Tax' || a.taxStatus === 'Locked') {
+                        taxGroups[a.taxStatus] += a.total;
+                      }
+                    });
+
+                    return [
+                      { label: t('postTax'), status: 'Post-Tax', color: 'text-emerald-600' },
+                      { label: t('preTax'), status: 'Pre-Tax', color: 'text-indigo-600' },
+                      { label: t('locked'), status: 'Locked', color: 'text-amber-600' },
+                    ].map((item) => {
+                      const value = taxGroups[item.status as keyof typeof taxGroups];
+                      const percentage = totalWealth > 0 ? (value / totalWealth) * 100 : 0;
+                      return (
+                        <div key={item.status} className="flex justify-between items-center gap-2">
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs text-slate-500 truncate">{item.label}</span>
+                            <span className="text-[10px] font-bold text-slate-400">{percentage.toFixed(1)}% {t('ofTotal')}</span>
+                          </div>
+                          <span className={`text-sm font-mono font-bold ${item.color} shrink-0`}>
+                            {formatCurrency(value, currency)}
+                          </span>
                         </div>
-                        <span className={`text-sm font-mono font-bold ${item.color} shrink-0`}>
-                          {formatCurrency(value, currency)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

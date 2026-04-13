@@ -1,5 +1,5 @@
 export type AssetType = 'Domestic Stock' | 'International Stock' | 'Cash' | 'Private' | 'Real Estate';
-export type TaxStatus = 'Pre-Tax' | 'Post-Tax' | 'Locked';
+export type TaxStatus = 'Pre-Tax' | 'Post-Tax' | 'Locked' | 'Roth';
 export type LiabilityType = 'Mortgage' | 'Student Loan' | 'Credit Card' | 'Auto Loan' | 'Other';
 
 export interface Asset {
@@ -13,6 +13,7 @@ export interface Asset {
   price?: number;
   total: number;
   isEnabled: boolean;
+  basis?: number;
 }
 
 export interface Liability {
