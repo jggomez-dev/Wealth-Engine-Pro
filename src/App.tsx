@@ -14,7 +14,8 @@ import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { HealthcareCalculator } from './components/HealthcareCalculator';
 import SabbaticalCalculator from './components/SabbaticalCalculator';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase } from 'lucide-react';
+import RealEstateCalculator, { RealEstatePropertyData } from './components/RealEstateCalculator';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -48,7 +49,7 @@ export default function App() {
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate'>('dashboard');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -357,6 +358,31 @@ export default function App() {
     }
   };
 
+  const handleSavePropertyToLedger = (propertyData: RealEstatePropertyData) => {
+    // Add Asset
+    addAsset({
+      account: propertyData.name,
+      ticker: 'Real Estate',
+      type: 'Real Estate',
+      taxStatus: 'Locked',
+      qty: 1,
+      beta: 0.5,
+      total: propertyData.value,
+      isEnabled: true
+    });
+
+    // Add Liability if there's a loan
+    if (propertyData.loanBalance > 0) {
+      addLiability({
+        name: `${propertyData.name} Mortgage`,
+        type: 'Mortgage',
+        balance: propertyData.loanBalance,
+        interestRate: propertyData.interestRate,
+        minimumPayment: propertyData.mortgagePayment
+      });
+    }
+  };
+
   const activeAssets = useMemo(() => assets.filter(a => a.isEnabled), [assets]);
   const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
   const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
@@ -612,6 +638,20 @@ export default function App() {
                 {t('sabbaticalTab')}
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('realEstate')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                activeTab === 'realEstate' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Home className="w-4 h-4" />
+                {t('realEstateTab')}
+              </div>
+            </button>
           </div>
 
           {activeTab === 'healthcare' ? (
@@ -623,6 +663,8 @@ export default function App() {
               realEstateReturn={params.realEstateReturn}
               monthlySpend={params.monthlySpend}
             />
+          ) : activeTab === 'realEstate' ? (
+            <RealEstateCalculator onSaveToLedger={handleSavePropertyToLedger} />
           ) : (
             <>
               {/* Top Metrics */}
