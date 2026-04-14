@@ -198,6 +198,14 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
     let yearCashFlow = 0;
     const totalMonths = Math.max(30, loanTerm) * 12;
 
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const monthsSincePurchase = (currentYear - pYear) * 12 + (currentMonth - pMonth);
+
+    let currentValForLedger = purchasePrice;
+    let currentBalanceForLedger = loanAmount;
+
     for (let m = 1; m <= totalMonths; m++) {
       let principalPaid = 0;
       let interestPaid = 0;
@@ -245,6 +253,24 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
         currentMonthlyRent *= (1 + rentGrowthRate / 100);
         currentMonthlyFixedExpenses *= (1 + expenseGrowthRate / 100);
       }
+
+      if (m === monthsSincePurchase) {
+        currentValForLedger = currentPropertyValue;
+        currentBalanceForLedger = currentBalance;
+      }
+    }
+
+    if (monthsSincePurchase > totalMonths) {
+      currentValForLedger = currentPropertyValue;
+      currentBalanceForLedger = currentBalance;
+      // Approximate further appreciation if loan is paid off
+      const extraYears = Math.floor((monthsSincePurchase - totalMonths) / 12);
+      if (extraYears > 0) {
+        currentValForLedger *= Math.pow(1 + appreciationRate / 100, extraYears);
+      }
+    } else if (monthsSincePurchase <= 0) {
+      currentValForLedger = purchasePrice;
+      currentBalanceForLedger = loanAmount;
     }
 
     return {
@@ -256,19 +282,20 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
       totalMonthlyExpenses,
       monthlyMortgage,
       monthlyIncome,
-      projections
+      projections,
+      currentValForLedger,
+      currentBalanceForLedger
     };
   }, [activeProperty]);
 
   const handleSave = () => {
     if (onSaveToLedger) {
-      const loanAmount = activeProperty.purchasePrice - (activeProperty.purchasePrice * (activeProperty.downPaymentPercent / 100));
       onSaveToLedger({
         name: activeProperty.name,
-        value: activeProperty.purchasePrice,
-        loanBalance: loanAmount,
+        value: Math.round(calculations.currentValForLedger),
+        loanBalance: Math.round(calculations.currentBalanceForLedger),
         mortgagePayment: calculations.monthlyMortgage,
-        interestRate: activeProperty.interestRate,
+        interestRate: activeProperty.interestRate / 100, // Convert to decimal for ledger
       });
       setSavedStatus(prev => ({ ...prev, [activeId]: true }));
       setTimeout(() => {
