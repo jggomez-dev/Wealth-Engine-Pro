@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth } from './types';
+import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth, PropertyConfig } from './types';
 import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
@@ -14,7 +14,7 @@ import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { HealthcareCalculator } from './components/HealthcareCalculator';
 import SabbaticalCalculator from './components/SabbaticalCalculator';
-import RealEstateCalculator, { RealEstatePropertyData } from './components/RealEstateCalculator';
+import RealEstateCalculator, { RealEstatePropertyData, DEFAULT_PROPERTY } from './components/RealEstateCalculator';
 import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db } from './firebase';
@@ -47,6 +47,9 @@ export default function App() {
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
+  const [realEstateProperties, setRealEstateProperties] = useState<PropertyConfig[]>([
+    { id: '1', name: 'Property 1', ...DEFAULT_PROPERTY }
+  ]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate'>('dashboard');
@@ -233,17 +236,31 @@ export default function App() {
         console.error("Error fetching historical net worth:", error);
       });
 
+      // Listen to Real Estate Properties
+      const unsubRealEstate = onSnapshot(collection(db, 'users', user.uid, 'realEstate'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PropertyConfig));
+          setRealEstateProperties(loaded);
+        } else {
+          setRealEstateProperties([]);
+        }
+      }, (error) => {
+        console.error("Error fetching real estate:", error);
+      });
+
       return () => {
         unsubProfile();
         unsubAssets();
         unsubLiabilities();
         unsubHistorical();
+        unsubRealEstate();
       };
     } else {
       // Reset to defaults if logged out
       setAssets(INITIAL_ASSETS);
       setLiabilities([]);
       setHistoricalRecords([]);
+      setRealEstateProperties([{ id: '1', name: 'Property 1', ...DEFAULT_PROPERTY }]);
     }
   }, [user, isAuthReady]);
 
@@ -320,6 +337,7 @@ export default function App() {
     if (user) {
       setDoc(doc(db, 'users', user.uid, 'assets', id), { ...newAsset, userId: user.uid }).catch(console.error);
     }
+    return id;
   };
 
   const deleteAsset = (id: string) => {
@@ -349,6 +367,7 @@ export default function App() {
     if (user) {
       setDoc(doc(db, 'users', user.uid, 'liabilities', id), { ...newLiability, userId: user.uid }).catch(console.error);
     }
+    return id;
   };
 
   const deleteLiability = (id: string) => {
@@ -358,28 +377,63 @@ export default function App() {
     }
   };
 
-  const handleSavePropertyToLedger = (propertyData: RealEstatePropertyData) => {
-    // Add Asset
-    addAsset({
-      account: propertyData.name,
-      ticker: 'Real Estate',
-      type: 'Real Estate',
-      taxStatus: 'Locked',
-      qty: 1,
-      beta: 0.5,
-      total: propertyData.value,
-      isEnabled: true
-    });
+  const handleSavePropertyToLedger = (propertyId: string, propertyData: RealEstatePropertyData) => {
+    const property = realEstateProperties.find(p => p.id === propertyId);
+    if (!property) return;
 
-    // Add Liability if there's a loan
-    if (propertyData.loanBalance > 0) {
-      addLiability({
-        name: `${propertyData.name} Mortgage`,
-        type: 'Mortgage',
-        balance: propertyData.loanBalance,
-        interestRate: propertyData.interestRate,
-        minimumPayment: propertyData.mortgagePayment
+    let assetId = property.linkedAssetId;
+    let liabilityId = property.linkedLiabilityId;
+    let needsPropertyUpdate = false;
+
+    if (assetId && assets.some(a => a.id === assetId)) {
+      updateAsset(assetId, {
+        account: propertyData.name,
+        total: propertyData.value,
       });
+    } else {
+      assetId = addAsset({
+        account: propertyData.name,
+        ticker: 'Real Estate',
+        type: 'Real Estate',
+        taxStatus: 'Locked',
+        qty: 1,
+        beta: 0.5,
+        total: propertyData.value,
+        isEnabled: true
+      });
+      needsPropertyUpdate = true;
+    }
+
+    if (propertyData.loanBalance > 0) {
+      if (liabilityId && liabilities.some(l => l.id === liabilityId)) {
+        updateLiability(liabilityId, {
+          name: `${propertyData.name} Mortgage`,
+          balance: propertyData.loanBalance,
+          interestRate: propertyData.interestRate,
+          minimumPayment: propertyData.mortgagePayment
+        });
+      } else {
+        liabilityId = addLiability({
+          name: `${propertyData.name} Mortgage`,
+          type: 'Mortgage',
+          balance: propertyData.loanBalance,
+          interestRate: propertyData.interestRate,
+          minimumPayment: propertyData.mortgagePayment
+        });
+        needsPropertyUpdate = true;
+      }
+    } else if (liabilityId) {
+      deleteLiability(liabilityId);
+      liabilityId = undefined;
+      needsPropertyUpdate = true;
+    }
+
+    if (needsPropertyUpdate) {
+      const updates = { linkedAssetId: assetId, linkedLiabilityId: liabilityId };
+      setRealEstateProperties(prev => prev.map(p => p.id === propertyId ? { ...p, ...updates } : p));
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'realEstate', propertyId), updates, { merge: true }).catch(console.error);
+      }
     }
   };
 
@@ -664,7 +718,28 @@ export default function App() {
               monthlySpend={params.monthlySpend}
             />
           ) : activeTab === 'realEstate' ? (
-            <RealEstateCalculator onSaveToLedger={handleSavePropertyToLedger} />
+            <RealEstateCalculator 
+              properties={realEstateProperties}
+              onUpdateProperty={(id, updates) => {
+                setRealEstateProperties(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+                if (user) {
+                  setDoc(doc(db, 'users', user.uid, 'realEstate', id), updates, { merge: true }).catch(console.error);
+                }
+              }}
+              onAddProperty={(property) => {
+                setRealEstateProperties(prev => [...prev, property]);
+                if (user) {
+                  setDoc(doc(db, 'users', user.uid, 'realEstate', property.id), { ...property, userId: user.uid }).catch(console.error);
+                }
+              }}
+              onDeleteProperty={(id) => {
+                setRealEstateProperties(prev => prev.filter(p => p.id !== id));
+                if (user) {
+                  deleteDoc(doc(db, 'users', user.uid, 'realEstate', id)).catch(console.error);
+                }
+              }}
+              onSaveToLedger={handleSavePropertyToLedger} 
+            />
           ) : (
             <>
               {/* Top Metrics */}

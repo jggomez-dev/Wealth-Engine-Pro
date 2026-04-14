@@ -33,6 +33,35 @@ export interface HistoricalNetWorth {
   netWorth: number;
 }
 
+export interface PropertyConfig {
+  id: string;
+  name: string;
+  purchaseDate: string;
+  purchasePrice: number;
+  closingCosts: number;
+  rehabCosts: number;
+  downPaymentPercent: number;
+  interestRate: number;
+  loanTerm: number;
+  extraPrincipalMonthly: number;
+  oneTimePrincipal: number;
+  oneTimePrincipalYear: number;
+  grossRent: number;
+  otherIncome: number;
+  propertyTaxes: number;
+  insurance: number;
+  repairsPercent: number;
+  vacancyPercent: number;
+  capexPercent: number;
+  managementPercent: number;
+  hoa: number;
+  appreciationRate: number;
+  rentGrowthRate: number;
+  expenseGrowthRate: number;
+  linkedAssetId?: string;
+  linkedLiabilityId?: string;
+}
+
 export interface SimulationParams {
   monthlySpend: number;
   monthlySavings: number;

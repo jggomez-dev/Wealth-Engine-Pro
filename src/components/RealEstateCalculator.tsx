@@ -4,35 +4,9 @@ import { Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Responsi
 import { useLanguage } from '../lib/LanguageContext';
 import { formatCurrency, cn } from '../lib/utils';
 import MetricCard from './MetricCard';
+import { PropertyConfig } from '../types';
 
-interface PropertyConfig {
-  id: string;
-  name: string;
-  purchaseDate: string;
-  purchasePrice: number;
-  closingCosts: number;
-  rehabCosts: number;
-  downPaymentPercent: number;
-  interestRate: number;
-  loanTerm: number;
-  extraPrincipalMonthly: number;
-  oneTimePrincipal: number;
-  oneTimePrincipalYear: number;
-  grossRent: number;
-  otherIncome: number;
-  propertyTaxes: number;
-  insurance: number;
-  repairsPercent: number;
-  vacancyPercent: number;
-  capexPercent: number;
-  managementPercent: number;
-  hoa: number;
-  appreciationRate: number;
-  rentGrowthRate: number;
-  expenseGrowthRate: number;
-}
-
-const DEFAULT_PROPERTY: Omit<PropertyConfig, 'id' | 'name'> = {
+export const DEFAULT_PROPERTY: Omit<PropertyConfig, 'id' | 'name'> = {
   purchaseDate: new Date().toISOString().slice(0, 7),
   purchasePrice: 300000,
   closingCosts: 6000,
@@ -66,7 +40,11 @@ export interface RealEstatePropertyData {
 }
 
 interface RealEstateCalculatorProps {
-  onSaveToLedger?: (property: RealEstatePropertyData) => void;
+  properties: PropertyConfig[];
+  onUpdateProperty: (id: string, updates: Partial<PropertyConfig>) => void;
+  onAddProperty: (property: PropertyConfig) => void;
+  onDeleteProperty: (id: string) => void;
+  onSaveToLedger?: (propertyId: string, property: RealEstatePropertyData) => void;
 }
 
 const InputGroup = ({ label, value, onChange, type = "number", prefix = "", suffix = "", step = "1" }: any) => {
@@ -120,23 +98,21 @@ const InputGroup = ({ label, value, onChange, type = "number", prefix = "", suff
   );
 };
 
-export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalculatorProps) {
+export default function RealEstateCalculator({ properties, onUpdateProperty, onAddProperty, onDeleteProperty, onSaveToLedger }: RealEstateCalculatorProps) {
   const { t } = useLanguage();
   
-  const [properties, setProperties] = useState<PropertyConfig[]>([
-    { id: '1', name: `${t('property')} 1`, ...DEFAULT_PROPERTY }
-  ]);
-  const [activeId, setActiveId] = useState<string>('1');
+  const [activeId, setActiveId] = useState<string>(properties[0]?.id || '1');
   const [savedStatus, setSavedStatus] = useState<Record<string, boolean>>({});
 
   const activeProperty = properties.find(p => p.id === activeId) || properties[0];
 
   const updateProperty = (field: keyof PropertyConfig, value: any) => {
-    setProperties(prev => prev.map(p => p.id === activeId ? { ...p, [field]: value } : p));
+    onUpdateProperty(activeId, { [field]: value });
     setSavedStatus(prev => ({ ...prev, [activeId]: false }));
   };
 
   const calculations = useMemo(() => {
+    if (!activeProperty) return null;
     const {
       purchaseDate, purchasePrice, closingCosts, rehabCosts, downPaymentPercent, interestRate, loanTerm, extraPrincipalMonthly, oneTimePrincipal, oneTimePrincipalYear,
       grossRent, otherIncome, propertyTaxes, insurance, repairsPercent, vacancyPercent,
@@ -288,14 +264,33 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
     };
   }, [activeProperty]);
 
-  const handleSave = () => {
-    if (onSaveToLedger) {
-      onSaveToLedger({
+  useEffect(() => {
+    if (activeProperty?.linkedAssetId && onSaveToLedger && calculations) {
+      onSaveToLedger(activeProperty.id, {
         name: activeProperty.name,
         value: Math.round(calculations.currentValForLedger),
         loanBalance: Math.round(calculations.currentBalanceForLedger),
         mortgagePayment: calculations.monthlyMortgage,
-        interestRate: activeProperty.interestRate / 100, // Convert to decimal for ledger
+        interestRate: activeProperty.interestRate / 100,
+      });
+    }
+  }, [
+    activeProperty?.linkedAssetId,
+    activeProperty?.name,
+    activeProperty?.interestRate,
+    calculations?.currentValForLedger,
+    calculations?.currentBalanceForLedger,
+    calculations?.monthlyMortgage
+  ]);
+
+  const handleSave = () => {
+    if (onSaveToLedger && activeProperty && calculations) {
+      onSaveToLedger(activeProperty.id, {
+        name: activeProperty.name,
+        value: Math.round(calculations.currentValForLedger),
+        loanBalance: Math.round(calculations.currentBalanceForLedger),
+        mortgagePayment: calculations.monthlyMortgage,
+        interestRate: activeProperty.interestRate / 100,
       });
       setSavedStatus(prev => ({ ...prev, [activeId]: true }));
       setTimeout(() => {
@@ -303,6 +298,23 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
       }, 3000);
     }
   };
+
+  if (!activeProperty || !calculations) {
+    return (
+      <div className="text-center py-12 max-w-6xl mx-auto">
+        <button
+          onClick={() => {
+            const newId = Math.random().toString(36).substr(2, 9);
+            onAddProperty({ id: newId, name: `${t('property')} 1`, ...DEFAULT_PROPERTY });
+            setActiveId(newId);
+          }}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+        >
+          + {t('addProperty')}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -322,15 +334,20 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
           {onSaveToLedger && (
             <button
               onClick={handleSave}
-              disabled={savedStatus[activeId]}
+              disabled={savedStatus[activeId] || !!activeProperty.linkedAssetId}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                savedStatus[activeId]
+                savedStatus[activeId] || activeProperty.linkedAssetId
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                   : "bg-indigo-600 text-white hover:bg-indigo-700"
               )}
             >
-              {savedStatus[activeId] ? (
+              {activeProperty.linkedAssetId ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Linked to Ledger
+                </>
+              ) : savedStatus[activeId] ? (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
                   {t('savedToLedger')}
@@ -364,7 +381,7 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
           <button
             onClick={() => {
               const newId = Math.random().toString(36).substr(2, 9);
-              setProperties(prev => [...prev, { id: newId, name: `${t('property')} ${prev.length + 1}`, ...DEFAULT_PROPERTY }]);
+              onAddProperty({ id: newId, name: `${t('property')} ${properties.length + 1}`, ...DEFAULT_PROPERTY });
               setActiveId(newId);
             }}
             className="px-4 py-2 rounded-lg text-sm font-medium border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-indigo-500 hover:text-indigo-600 dark:hover:border-indigo-400 dark:hover:text-indigo-400 transition-colors flex items-center gap-1"
@@ -375,9 +392,9 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
           {properties.length > 1 && (
             <button
               onClick={() => {
-                const newProps = properties.filter(p => p.id !== activeId);
-                setProperties(newProps);
-                setActiveId(newProps[0].id);
+                onDeleteProperty(activeId);
+                const remaining = properties.filter(p => p.id !== activeId);
+                if (remaining.length > 0) setActiveId(remaining[0].id);
               }}
               className="ml-auto px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors"
             >
