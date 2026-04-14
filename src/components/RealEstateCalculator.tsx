@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Home, DollarSign, TrendingUp, Percent, Calculator, Building, Save, CheckCircle2 } from 'lucide-react';
 import { Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
 import { useLanguage } from '../lib/LanguageContext';
@@ -8,7 +8,7 @@ import MetricCard from './MetricCard';
 interface PropertyConfig {
   id: string;
   name: string;
-  purchaseYear: number;
+  purchaseDate: string;
   purchasePrice: number;
   closingCosts: number;
   rehabCosts: number;
@@ -33,7 +33,7 @@ interface PropertyConfig {
 }
 
 const DEFAULT_PROPERTY: Omit<PropertyConfig, 'id' | 'name'> = {
-  purchaseYear: new Date().getFullYear(),
+  purchaseDate: new Date().toISOString().slice(0, 7),
   purchasePrice: 300000,
   closingCosts: 6000,
   rehabCosts: 10000,
@@ -69,6 +69,57 @@ interface RealEstateCalculatorProps {
   onSaveToLedger?: (property: RealEstatePropertyData) => void;
 }
 
+const InputGroup = ({ label, value, onChange, type = "number", prefix = "", suffix = "", step = "1" }: any) => {
+  const [localValue, setLocalValue] = useState<string | number>(value);
+
+  useEffect(() => {
+    setLocalValue((prev) => {
+      if (type === 'month' || type === 'date' || type === 'text') return value;
+      if (prev === '' && value === 0) return '';
+      if (prev === '-' && value === 0) return '-';
+      if (String(prev).endsWith('.') && Number(prev) === value) return prev;
+      if (String(prev).endsWith('.0') && Number(prev) === value) return prev;
+      if (Number(prev) === value) return prev;
+      return value;
+    });
+  }, [value, type]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalValue(val);
+    if (type === 'month' || type === 'date' || type === 'text') {
+      onChange(val);
+    } else {
+      if (val === '' || val === '-') {
+        onChange(0);
+      } else {
+        onChange(parseFloat(val) || 0);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</label>
+      <div className="relative">
+        {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{prefix}</span>}
+        <input
+          type={type}
+          value={localValue}
+          onChange={handleChange}
+          step={step}
+          className={cn(
+            "w-full text-sm p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+            prefix && "pl-7",
+            suffix && "pr-8"
+          )}
+        />
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{suffix}</span>}
+      </div>
+    </div>
+  );
+};
+
 export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalculatorProps) {
   const { t } = useLanguage();
   
@@ -87,10 +138,14 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
 
   const calculations = useMemo(() => {
     const {
-      purchaseYear, purchasePrice, closingCosts, rehabCosts, downPaymentPercent, interestRate, loanTerm, extraPrincipalMonthly, oneTimePrincipal, oneTimePrincipalYear,
+      purchaseDate, purchasePrice, closingCosts, rehabCosts, downPaymentPercent, interestRate, loanTerm, extraPrincipalMonthly, oneTimePrincipal, oneTimePrincipalYear,
       grossRent, otherIncome, propertyTaxes, insurance, repairsPercent, vacancyPercent,
       capexPercent, managementPercent, hoa, appreciationRate, rentGrowthRate, expenseGrowthRate
     } = activeProperty;
+
+    const [pYearStr, pMonthStr] = (purchaseDate || new Date().toISOString().slice(0, 7)).split('-');
+    const pYear = parseInt(pYearStr, 10) || new Date().getFullYear();
+    const pMonth = parseInt(pMonthStr, 10) || new Date().getMonth() + 1;
 
     const downPaymentAmount = purchasePrice * (downPaymentPercent / 100);
     const loanAmount = purchasePrice - downPaymentAmount;
@@ -99,7 +154,7 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
     // Monthly P&I
     const r = interestRate / 100 / 12;
     const n = loanTerm * 12;
-    const monthlyMortgage = r === 0 ? loanAmount / n : loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    const monthlyMortgage = n === 0 ? 0 : (r === 0 ? loanAmount / n : loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
 
     const monthlyIncome = grossRent + otherIncome;
     
@@ -121,57 +176,75 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
     const capRate = purchasePrice > 0 ? (annualNOI / purchasePrice) * 100 : 0;
     const cashOnCash = totalOutOfPocket > 0 ? (annualCashFlow / totalOutOfPocket) * 100 : 0;
 
-    // 30-Year Projections
+    // Month-by-Month Projections
     const projections = [];
     let currentBalance = loanAmount;
     let currentPropertyValue = purchasePrice;
-    let currentAnnualRent = monthlyIncome * 12;
-    let currentAnnualFixedExpenses = (monthlyTaxes + monthlyInsurance + hoa) * 12;
+    let currentMonthlyRent = monthlyIncome;
+    let currentMonthlyFixedExpenses = (monthlyTaxes + monthlyInsurance + hoa);
     const variableExpensePercent = (repairsPercent + vacancyPercent + capexPercent + managementPercent) / 100;
 
-    for (let year = 1; year <= Math.max(30, loanTerm); year++) {
-      // Amortization for the year
-      let yearlyPrincipalPaid = 0;
-      let yearlyInterestPaid = 0;
+    // Initial State (Purchase Month)
+    projections.push({
+      year: `${pMonth}/${pYear}`,
+      propertyValue: Math.round(currentPropertyValue),
+      loanBalance: Math.round(currentBalance),
+      equity: Math.round(currentPropertyValue - currentBalance),
+      cashFlow: 0,
+    });
 
-      if (year === oneTimePrincipalYear && oneTimePrincipal > 0) {
-        let principalPayment = oneTimePrincipal;
-        if (principalPayment > currentBalance) {
-          principalPayment = currentBalance;
-        }
-        currentBalance -= principalPayment;
-        yearlyPrincipalPaid += principalPayment;
+    const targetOneTimeMonth = oneTimePrincipalYear * 12;
+    let currentCalendarYear = pYear;
+    let yearCashFlow = 0;
+    const totalMonths = Math.max(30, loanTerm) * 12;
+
+    for (let m = 1; m <= totalMonths; m++) {
+      let principalPaid = 0;
+      let interestPaid = 0;
+
+      if (m === targetOneTimeMonth && oneTimePrincipal > 0) {
+        let extra = oneTimePrincipal;
+        if (extra > currentBalance) extra = currentBalance;
+        currentBalance -= extra;
+        principalPaid += extra;
       }
 
-      for (let m = 0; m < 12; m++) {
-        if (currentBalance > 0) {
-          const interest = currentBalance * r;
-          let principal = monthlyMortgage - interest + extraPrincipalMonthly;
-          if (principal > currentBalance) {
-            principal = currentBalance;
-          }
-          yearlyInterestPaid += interest;
-          yearlyPrincipalPaid += principal;
-          currentBalance -= principal;
-        }
+      if (currentBalance > 0) {
+        const interest = currentBalance * r;
+        let principal = monthlyMortgage - interest + extraPrincipalMonthly;
+        if (principal > currentBalance) principal = currentBalance;
+        interestPaid += interest;
+        principalPaid += principal;
+        currentBalance -= principal;
       }
       if (currentBalance < 0) currentBalance = 0;
 
-      currentPropertyValue *= (1 + appreciationRate / 100);
-      currentAnnualRent *= (1 + rentGrowthRate / 100);
-      currentAnnualFixedExpenses *= (1 + expenseGrowthRate / 100);
+      const monthlyVariableExpenses = currentMonthlyRent * variableExpensePercent;
+      const monthlyExpenses = currentMonthlyFixedExpenses + monthlyVariableExpenses;
+      const monthlyCF = currentMonthlyRent - monthlyExpenses - (principalPaid + interestPaid);
+      
+      yearCashFlow += monthlyCF;
 
-      const currentAnnualVariableExpenses = currentAnnualRent * variableExpensePercent;
-      const currentAnnualExpenses = currentAnnualFixedExpenses + currentAnnualVariableExpenses;
-      const currentAnnualCashFlow = currentAnnualRent - currentAnnualExpenses - (yearlyPrincipalPaid + yearlyInterestPaid);
+      const currentMonthOfYear = ((pMonth - 1 + m - 1) % 12) + 1;
+      
+      if (currentMonthOfYear === 12 || m === totalMonths) {
+        projections.push({
+          year: currentCalendarYear.toString(),
+          propertyValue: Math.round(currentPropertyValue),
+          loanBalance: Math.round(currentBalance),
+          equity: Math.round(currentPropertyValue - currentBalance),
+          cashFlow: Math.round(yearCashFlow),
+        });
+        currentCalendarYear++;
+        yearCashFlow = 0;
+      }
 
-      projections.push({
-        year: purchaseYear + year - 1,
-        propertyValue: Math.round(currentPropertyValue),
-        loanBalance: Math.round(currentBalance),
-        equity: Math.round(currentPropertyValue - currentBalance),
-        cashFlow: Math.round(currentAnnualCashFlow),
-      });
+      // Apply growth on anniversary
+      if (m % 12 === 0) {
+        currentPropertyValue *= (1 + appreciationRate / 100);
+        currentMonthlyRent *= (1 + rentGrowthRate / 100);
+        currentMonthlyFixedExpenses *= (1 + expenseGrowthRate / 100);
+      }
     }
 
     return {
@@ -186,27 +259,6 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
       projections
     };
   }, [activeProperty]);
-
-  const InputGroup = ({ label, value, onChange, type = "number", prefix = "", suffix = "", step = "1" }: any) => (
-    <div className="space-y-1">
-      <label className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</label>
-      <div className="relative">
-        {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{prefix}</span>}
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          step={step}
-          className={cn(
-            "w-full text-sm p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
-            prefix && "pl-7",
-            suffix && "pr-8"
-          )}
-        />
-        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{suffix}</span>}
-      </div>
-    </div>
-  );
 
   const handleSave = () => {
     if (onSaveToLedger) {
@@ -313,10 +365,14 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200 dark:border-slate-800 pb-2">
               {t('purchaseInfo')}
             </h3>
-            <InputGroup label={t('purchaseYear')} value={activeProperty.purchaseYear} onChange={(v: number) => updateProperty('purchaseYear', v)} />
-            <InputGroup label={t('purchasePrice')} value={activeProperty.purchasePrice} onChange={(v: number) => updateProperty('purchasePrice', v)} prefix="$" step="1000" />
-            <InputGroup label={t('closingCosts')} value={activeProperty.closingCosts} onChange={(v: number) => updateProperty('closingCosts', v)} prefix="$" step="100" />
-            <InputGroup label={t('rehabCosts')} value={activeProperty.rehabCosts} onChange={(v: number) => updateProperty('rehabCosts', v)} prefix="$" step="1000" />
+            <div className="grid grid-cols-2 gap-4">
+              <InputGroup label={t('purchaseDate')} value={activeProperty.purchaseDate} onChange={(v: string) => updateProperty('purchaseDate', v)} type="month" />
+              <InputGroup label={t('purchasePrice')} value={activeProperty.purchasePrice} onChange={(v: number) => updateProperty('purchasePrice', v)} prefix="$" step="1000" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <InputGroup label={t('closingCosts')} value={activeProperty.closingCosts} onChange={(v: number) => updateProperty('closingCosts', v)} prefix="$" step="100" />
+              <InputGroup label={t('rehabCosts')} value={activeProperty.rehabCosts} onChange={(v: number) => updateProperty('rehabCosts', v)} prefix="$" step="1000" />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <InputGroup label={t('downPaymentPercent')} value={activeProperty.downPaymentPercent} onChange={(v: number) => updateProperty('downPaymentPercent', v)} suffix="%" step="0.1" />
               <InputGroup label={t('mortgageInterestRate')} value={activeProperty.interestRate} onChange={(v: number) => updateProperty('interestRate', v)} suffix="%" step="0.125" />
@@ -386,7 +442,7 @@ export default function RealEstateCalculator({ onSaveToLedger }: RealEstateCalcu
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
         <MetricCard
           title={t('monthlyCashFlow')}
           value={formatCurrency(calculations.monthlyCashFlow)}
