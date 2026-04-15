@@ -487,7 +487,7 @@ export default function App() {
   const fiTarget = useMemo(() => (params.monthlySpend * 12) / params.withdrawalRate, [params.monthlySpend, params.withdrawalRate]);
   
   const effectiveWealth = useMemo(() => {
-    return activeAssets.reduce((sum, a) => {
+    const adjustedAssets = activeAssets.reduce((sum, a) => {
       if (a.taxStatus === 'Pre-Tax') {
         return sum + (a.total * (1 - params.taxRate));
       }
@@ -502,7 +502,8 @@ export default function App() {
       }
       return sum + a.total;
     }, 0);
-  }, [activeAssets, params.taxRate]);
+    return adjustedAssets - totalLiabilities;
+  }, [activeAssets, params.taxRate, totalLiabilities]);
 
   const weightedExpectedReturn = useMemo(() => {
     if (totalWealth === 0) return params.expectedReturn;
@@ -767,7 +768,7 @@ export default function App() {
               value={formatCurrency(effectiveWealth, currency)}
               subtitle={t('effectiveWealthSubtitle')}
               icon={<Target className="w-5 h-5" />}
-              info={`Effective Wealth is your Net Worth adjusted for future taxes (${(params.taxRate * 100).toFixed(0)}% haircut on Pre-Tax assets) and liquidity (10% haircut on Locked assets like Real Estate or Private Equity).`}
+              info={`Effective Wealth is your Net Worth adjusted for future taxes (${(params.taxRate * 100).toFixed(0)}% haircut on Pre-Tax assets) and liquidity (10% haircut on Locked assets like Real Estate or Private Equity), minus your total liabilities.`}
             />
             <MetricCard
               title={t('timeToFi')}
