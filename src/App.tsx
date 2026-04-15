@@ -17,7 +17,7 @@ import SabbaticalCalculator from './components/SabbaticalCalculator';
 import RealEstateCalculator, { RealEstatePropertyData, DEFAULT_PROPERTY } from './components/RealEstateCalculator';
 import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
-import { auth, db } from './firebase';
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { doc, setDoc, collection, onSnapshot, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
 
@@ -199,7 +199,7 @@ export default function App() {
           setParams(docSnap.data().settings);
         }
       }, (error) => {
-        console.error("Error fetching profile:", error);
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
       });
 
       // Listen to Assets
@@ -209,7 +209,7 @@ export default function App() {
           setAssets(loadedAssets);
         }
       }, (error) => {
-        console.error("Error fetching assets:", error);
+        handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/assets`);
       });
 
       // Listen to Liabilities
@@ -221,7 +221,7 @@ export default function App() {
           setLiabilities([]);
         }
       }, (error) => {
-        console.error("Error fetching liabilities:", error);
+        handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/liabilities`);
       });
 
       // Listen to Historical Net Worth
@@ -233,7 +233,7 @@ export default function App() {
           setHistoricalRecords([]);
         }
       }, (error) => {
-        console.error("Error fetching historical net worth:", error);
+        handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/historicalNetWorth`);
       });
 
       // Listen to Real Estate Properties
@@ -245,7 +245,7 @@ export default function App() {
           setRealEstateProperties([]);
         }
       }, (error) => {
-        console.error("Error fetching real estate:", error);
+        handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/realEstate`);
       });
 
       return () => {
@@ -310,7 +310,7 @@ export default function App() {
   const updateParams = (newParams: SimulationParams) => {
     setParams(newParams);
     if (user) {
-      setDoc(doc(db, 'users', user.uid), { settings: newParams }, { merge: true }).catch(console.error);
+      setDoc(doc(db, 'users', user.uid), { settings: newParams }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
     }
   };
 
@@ -322,7 +322,7 @@ export default function App() {
           updated.total = updated.qty * updated.price;
         }
         if (user) {
-          setDoc(doc(db, 'users', user.uid, 'assets', id), updated, { merge: true }).catch(console.error);
+          setDoc(doc(db, 'users', user.uid, 'assets', id), { ...updated, userId: user.uid }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/assets/${id}`));
         }
         return updated;
       }
@@ -335,7 +335,7 @@ export default function App() {
     const newAsset: Asset = { ...asset, id };
     setAssets(prev => [...prev, newAsset]);
     if (user) {
-      setDoc(doc(db, 'users', user.uid, 'assets', id), { ...newAsset, userId: user.uid }).catch(console.error);
+      setDoc(doc(db, 'users', user.uid, 'assets', id), { ...newAsset, userId: user.uid }).catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/assets/${id}`));
     }
     return id;
   };
@@ -343,7 +343,7 @@ export default function App() {
   const deleteAsset = (id: string) => {
     setAssets(prev => prev.filter(a => a.id !== id));
     if (user) {
-      deleteDoc(doc(db, 'users', user.uid, 'assets', id)).catch(console.error);
+      deleteDoc(doc(db, 'users', user.uid, 'assets', id)).catch(e => handleFirestoreError(e, OperationType.DELETE, `users/${user.uid}/assets/${id}`));
     }
   };
 
@@ -352,7 +352,7 @@ export default function App() {
       if (liability.id === id) {
         const updated = { ...liability, ...updates };
         if (user) {
-          setDoc(doc(db, 'users', user.uid, 'liabilities', id), updated, { merge: true }).catch(console.error);
+          setDoc(doc(db, 'users', user.uid, 'liabilities', id), { ...updated, userId: user.uid }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/liabilities/${id}`));
         }
         return updated;
       }
@@ -365,7 +365,7 @@ export default function App() {
     const newLiability: Liability = { ...liability, id };
     setLiabilities(prev => [...prev, newLiability]);
     if (user) {
-      setDoc(doc(db, 'users', user.uid, 'liabilities', id), { ...newLiability, userId: user.uid }).catch(console.error);
+      setDoc(doc(db, 'users', user.uid, 'liabilities', id), { ...newLiability, userId: user.uid }).catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/liabilities/${id}`));
     }
     return id;
   };
@@ -373,7 +373,7 @@ export default function App() {
   const deleteLiability = (id: string) => {
     setLiabilities(prev => prev.filter(l => l.id !== id));
     if (user) {
-      deleteDoc(doc(db, 'users', user.uid, 'liabilities', id)).catch(console.error);
+      deleteDoc(doc(db, 'users', user.uid, 'liabilities', id)).catch(e => handleFirestoreError(e, OperationType.DELETE, `users/${user.uid}/liabilities/${id}`));
     }
   };
 
@@ -430,10 +430,16 @@ export default function App() {
 
     if (needsPropertyUpdate) {
       const updates = { linkedAssetId: assetId, linkedLiabilityId: liabilityId };
-      setRealEstateProperties(prev => prev.map(p => p.id === propertyId ? { ...p, ...updates } : p));
-      if (user) {
-        setDoc(doc(db, 'users', user.uid, 'realEstate', propertyId), updates, { merge: true }).catch(console.error);
-      }
+      setRealEstateProperties(prev => {
+        const newProps = prev.map(p => p.id === propertyId ? { ...p, ...updates } : p);
+        if (user) {
+          const updatedProp = newProps.find(p => p.id === propertyId);
+          if (updatedProp) {
+            setDoc(doc(db, 'users', user.uid, 'realEstate', propertyId), { ...updatedProp, userId: user.uid }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/realEstate/${propertyId}`));
+          }
+        }
+        return newProps;
+      });
     }
   };
 
@@ -456,7 +462,7 @@ export default function App() {
       netWorth: totalWealth
     };
     setHistoricalRecords(prev => [...prev, newRecord]);
-    setDoc(doc(db, 'users', user.uid, 'historicalNetWorth', id), { ...newRecord, userId: user.uid }).catch(console.error);
+    setDoc(doc(db, 'users', user.uid, 'historicalNetWorth', id), { ...newRecord, userId: user.uid }).catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/historicalNetWorth/${id}`));
   };
 
   const totalCash = useMemo(() => 
@@ -721,21 +727,27 @@ export default function App() {
             <RealEstateCalculator 
               properties={realEstateProperties}
               onUpdateProperty={(id, updates) => {
-                setRealEstateProperties(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-                if (user) {
-                  setDoc(doc(db, 'users', user.uid, 'realEstate', id), updates, { merge: true }).catch(console.error);
-                }
+                setRealEstateProperties(prev => {
+                  const newProps = prev.map(p => p.id === id ? { ...p, ...updates } : p);
+                  if (user) {
+                    const updatedProp = newProps.find(p => p.id === id);
+                    if (updatedProp) {
+                      setDoc(doc(db, 'users', user.uid, 'realEstate', id), { ...updatedProp, userId: user.uid }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/realEstate/${id}`));
+                    }
+                  }
+                  return newProps;
+                });
               }}
               onAddProperty={(property) => {
                 setRealEstateProperties(prev => [...prev, property]);
                 if (user) {
-                  setDoc(doc(db, 'users', user.uid, 'realEstate', property.id), { ...property, userId: user.uid }).catch(console.error);
+                  setDoc(doc(db, 'users', user.uid, 'realEstate', property.id), { ...property, userId: user.uid }).catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/realEstate/${property.id}`));
                 }
               }}
               onDeleteProperty={(id) => {
                 setRealEstateProperties(prev => prev.filter(p => p.id !== id));
                 if (user) {
-                  deleteDoc(doc(db, 'users', user.uid, 'realEstate', id)).catch(console.error);
+                  deleteDoc(doc(db, 'users', user.uid, 'realEstate', id)).catch(e => handleFirestoreError(e, OperationType.DELETE, `users/${user.uid}/realEstate/${id}`));
                 }
               }}
               onSaveToLedger={handleSavePropertyToLedger} 

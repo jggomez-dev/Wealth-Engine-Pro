@@ -131,14 +131,11 @@ service cloud.firestore {
     }
 
     function isValidRealEstateProperty(userId) {
-      return hasRequiredFields(['userId', 'name', 'value', 'mortgageBalance', 'interestRate', 'propertyTax', 'rentalIncome']) &&
+      return hasRequiredFields(['userId', 'name', 'purchasePrice', 'interestRate']) &&
              request.resource.data.userId == userId &&
              isValidStringLength('name', 1, 100) &&
-             request.resource.data.value is number &&
-             request.resource.data.mortgageBalance is number &&
-             request.resource.data.interestRate is number &&
-             request.resource.data.propertyTax is number &&
-             request.resource.data.rentalIncome is number;
+             request.resource.data.purchasePrice is number &&
+             request.resource.data.interestRate is number;
     }
 
     // ===============================================================
