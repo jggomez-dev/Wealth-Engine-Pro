@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Calculator, Info, DollarSign, TrendingUp, AlertCircle, Briefcase } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
-import { Asset } from '../types';
+import { Asset, PropertyConfig } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import MetricCard from './MetricCard';
 
 interface SabbaticalCalculatorProps {
   assets: Asset[];
+  realEstateProperties: PropertyConfig[];
   expectedReturn: number;
   realEstateReturn: number;
   monthlySpend: number;
@@ -14,6 +15,7 @@ interface SabbaticalCalculatorProps {
 
 export default function SabbaticalCalculator({
   assets,
+  realEstateProperties,
   expectedReturn,
   realEstateReturn,
   monthlySpend
@@ -22,13 +24,17 @@ export default function SabbaticalCalculator({
   const [durationMonths, setDurationMonths] = useState(12);
   const [strategy, setStrategy] = useState<'returns_only' | 'principal'>('returns_only');
 
-  const { postTaxTotal, realEstateTotal } = useMemo(() => {
+  const { postTaxTotal, unlinkedRealEstateTotal } = useMemo(() => {
+    const linkedAssetIds = new Set(realEstateProperties.map(p => p.linkedAssetId).filter(Boolean));
+
     return assets.reduce(
       (acc, asset) => {
         if (!asset.isEnabled) return acc;
         
         if (asset.type === 'Real Estate') {
-          acc.realEstateTotal += asset.total;
+          if (!linkedAssetIds.has(asset.id)) {
+            acc.unlinkedRealEstateTotal += asset.total;
+          }
         } else if (asset.taxStatus === 'Post-Tax') {
           acc.postTaxTotal += asset.total;
         } else if (asset.taxStatus === 'Roth') {
@@ -36,11 +42,39 @@ export default function SabbaticalCalculator({
         }
         return acc;
       },
-      { postTaxTotal: 0, realEstateTotal: 0 }
+      { postTaxTotal: 0, unlinkedRealEstateTotal: 0 }
     );
-  }, [assets]);
+  }, [assets, realEstateProperties]);
 
-  const monthlyRealEstateIncome = (realEstateTotal * realEstateReturn) / 12;
+  const monthlyRealEstateIncome = useMemo(() => {
+    const propertiesIncome = realEstateProperties.reduce((sum, prop) => {
+      const monthlyIncome = prop.grossRent + prop.otherIncome;
+      const monthlyTaxes = prop.propertyTaxes / 12;
+      const monthlyInsurance = prop.insurance / 12;
+      const monthlyRepairs = (monthlyIncome * prop.repairsPercent) / 100;
+      const monthlyVacancy = (monthlyIncome * prop.vacancyPercent) / 100;
+      const monthlyCapex = (monthlyIncome * prop.capexPercent) / 100;
+      const monthlyManagement = (monthlyIncome * prop.managementPercent) / 100;
+      const hoa = prop.hoa || 0;
+      
+      const totalMonthlyExpenses = monthlyTaxes + monthlyInsurance + monthlyRepairs + monthlyVacancy + monthlyCapex + monthlyManagement + hoa;
+      const monthlyNOI = monthlyIncome - totalMonthlyExpenses;
+      
+      const r = prop.interestRate / 100 / 12;
+      const n = prop.loanTerm * 12;
+      const loanAmount = prop.purchasePrice * (1 - prop.downPaymentPercent / 100);
+      const monthlyMortgage = loanAmount > 0 && r > 0 
+        ? loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+        : loanAmount > 0 ? loanAmount / n : 0;
+
+      const monthlyCashFlow = monthlyNOI - monthlyMortgage - prop.extraPrincipalMonthly;
+      return sum + monthlyCashFlow;
+    }, 0);
+
+    const unlinkedIncome = (unlinkedRealEstateTotal * realEstateReturn) / 12;
+
+    return propertiesIncome + unlinkedIncome;
+  }, [realEstateProperties, unlinkedRealEstateTotal, realEstateReturn]);
 
   const monthlyPostTaxIncome = useMemo(() => {
     const monthlyRate = expectedReturn / 12;
@@ -143,7 +177,7 @@ export default function SabbaticalCalculator({
           title={t('realEstateIncome')}
           value={formatCurrency(monthlyRealEstateIncome)}
           icon={<Calculator className="w-5 h-5 text-purple-500" />}
-          trend={{ value: `${formatCurrency(realEstateTotal)} total`, isPositive: true }}
+          trend={{ value: `${realEstateProperties.length} properties`, isPositive: true }}
         />
         <MetricCard
           title={t('surplusShortfall')}

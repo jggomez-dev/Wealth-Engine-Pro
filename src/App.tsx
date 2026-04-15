@@ -444,6 +444,44 @@ export default function App() {
   };
 
   const activeAssets = useMemo(() => assets.filter(a => a.isEnabled), [assets]);
+  
+  const netAssetsForCharts = useMemo(() => {
+    const clonedAssets = activeAssets.map(a => ({ ...a }));
+    
+    const linkedLiabilityBalances: Record<string, number> = {};
+    realEstateProperties.forEach(prop => {
+      if (prop.linkedAssetId && prop.linkedLiabilityId) {
+        const liability = liabilities.find(l => l.id === prop.linkedLiabilityId);
+        if (liability) {
+          linkedLiabilityBalances[prop.linkedAssetId] = (linkedLiabilityBalances[prop.linkedAssetId] || 0) + liability.balance;
+        }
+      }
+    });
+
+    const linkedLiabilityIds = new Set(realEstateProperties.map(p => p.linkedLiabilityId).filter(Boolean));
+    let unlinkedMortgage = liabilities
+      .filter(l => l.type === 'Mortgage' && !linkedLiabilityIds.has(l.id))
+      .reduce((sum, l) => sum + l.balance, 0);
+
+    for (const asset of clonedAssets) {
+      if (asset.type === 'Real Estate') {
+        if (linkedLiabilityBalances[asset.id]) {
+          asset.total = Math.max(0, asset.total - linkedLiabilityBalances[asset.id]);
+        }
+        if (unlinkedMortgage > 0 && asset.total > 0) {
+          if (asset.total >= unlinkedMortgage) {
+            asset.total -= unlinkedMortgage;
+            unlinkedMortgage = 0;
+          } else {
+            unlinkedMortgage -= asset.total;
+            asset.total = 0;
+          }
+        }
+      }
+    }
+    return clonedAssets;
+  }, [activeAssets, liabilities, realEstateProperties]);
+
   const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
   const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
   const totalWealth = totalAssets - totalLiabilities; // Net Worth
@@ -482,7 +520,7 @@ export default function App() {
     }, 0);
   }, [activeAssets]);
   const runwayMonths = useMemo(() => calculateRunway(liquidCash, params.monthlySpend), [liquidCash, params.monthlySpend]);
-  const portfolioBeta = useMemo(() => calculatePortfolioBeta(activeAssets), [activeAssets]);
+  const portfolioBeta = useMemo(() => calculatePortfolioBeta(netAssetsForCharts), [netAssetsForCharts]);
   
   const fiTarget = useMemo(() => (params.monthlySpend * 12) / params.withdrawalRate, [params.monthlySpend, params.withdrawalRate]);
   
@@ -719,7 +757,8 @@ export default function App() {
             <HealthcareCalculator />
           ) : activeTab === 'sabbatical' ? (
             <SabbaticalCalculator 
-              assets={assets}
+              assets={netAssetsForCharts}
+              realEstateProperties={realEstateProperties}
               expectedReturn={params.expectedReturn}
               realEstateReturn={params.realEstateReturn}
               monthlySpend={params.monthlySpend}
@@ -798,7 +837,7 @@ export default function App() {
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-6">
             <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
-              <PortfolioChart assets={activeAssets} />
+              <PortfolioChart assets={netAssetsForCharts} />
               <AggressivenessCard 
                 aggressiveness={params.aggressiveness}
                 onChange={(v) => updateParams({ ...params, aggressiveness: v })}
@@ -807,7 +846,7 @@ export default function App() {
               />
             </div>
             <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
-              <TaxBreakdownChart assets={activeAssets} />
+              <TaxBreakdownChart assets={netAssetsForCharts} />
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
                   {t('taxStrategy')}
@@ -819,7 +858,7 @@ export default function App() {
                       'Pre-Tax': 0,
                       'Locked': 0,
                     };
-                    activeAssets.forEach(a => {
+                    netAssetsForCharts.forEach(a => {
                       if (a.taxStatus === 'Roth') {
                         const basis = a.basis || 0;
                         const earnings = Math.max(0, a.total - basis);
