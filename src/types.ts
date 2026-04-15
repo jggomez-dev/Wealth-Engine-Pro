@@ -58,6 +58,7 @@ export interface PropertyConfig {
   appreciationRate: number;
   rentGrowthRate: number;
   expenseGrowthRate: number;
+  currentLoanBalanceOverride?: number;
   linkedAssetId?: string;
   linkedLiabilityId?: string;
 }

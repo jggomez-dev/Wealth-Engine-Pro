@@ -1,10 +1,14 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import dns from "node:dns";
+
+// Force IPv4 resolution first to avoid IPv6 timeout issues in the container
+dns.setDefaultResultOrder("ipv4first");
+
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import yahooFinance from 'yahoo-finance2';
-const yf = new yahooFinance();
+import nodeFetch from 'node-fetch';
 
 import fs from 'fs';
 
@@ -110,9 +114,18 @@ async function startServer() {
           
           if (MUTUAL_FUNDS.includes(symbol)) {
             console.log(`[${new Date().toISOString()}] Requesting Yahoo Finance for mutual fund: ${symbol}`);
-            const quote = await yf.quote(symbol);
-            console.log(`[${new Date().toISOString()}] Yahoo Finance response for ${symbol}:`, JSON.stringify(quote));
-            price = quote.regularMarketPrice || quote.previousClose || null;
+            try {
+              const response = await nodeFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
+              if (response.ok) {
+                const data: any = await response.json();
+                price = data?.chart?.result?.[0]?.meta?.regularMarketPrice || data?.chart?.result?.[0]?.meta?.previousClose || null;
+                console.log(`[${new Date().toISOString()}] Yahoo Finance response for ${symbol}:`, price);
+              } else {
+                console.error(`Yahoo Finance error for ${symbol}: ${response.status} ${response.statusText}`);
+              }
+            } catch (err) {
+              console.error(`Yahoo Finance fetch failed for ${symbol}:`, err);
+            }
           } else if (FINNHUB_API_KEY) {
             // Delay each request by 1 second to stay under the Finnhub free tier limit
             await new Promise(resolve => setTimeout(resolve, 1000));

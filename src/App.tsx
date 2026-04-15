@@ -14,8 +14,9 @@ import HistoricalChart from './components/HistoricalChart';
 import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { HealthcareCalculator } from './components/HealthcareCalculator';
 import SabbaticalCalculator from './components/SabbaticalCalculator';
+import GuardrailsCalculator from './components/GuardrailsCalculator';
 import RealEstateCalculator, { RealEstatePropertyData, DEFAULT_PROPERTY } from './components/RealEstateCalculator';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home } from 'lucide-react';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home, ShieldAlert } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -52,7 +53,7 @@ export default function App() {
   ]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate' | 'guardrails'>('dashboard');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -694,11 +695,11 @@ export default function App() {
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex border-b border-slate-200 dark:border-slate-800">
+          <div className="flex border-b border-slate-200 dark:border-slate-800 overflow-x-auto">
             <button
               onClick={() => setActiveTab('dashboard')}
               className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
                 activeTab === 'dashboard' 
                   ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
@@ -710,9 +711,23 @@ export default function App() {
               </div>
             </button>
             <button
+              onClick={() => setActiveTab('realEstate')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
+                activeTab === 'realEstate' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Home className="w-4 h-4" />
+                {t('realEstateTab')}
+              </div>
+            </button>
+            <button
               onClick={() => setActiveTab('healthcare')}
               className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
                 activeTab === 'healthcare' 
                   ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
@@ -726,7 +741,7 @@ export default function App() {
             <button
               onClick={() => setActiveTab('sabbatical')}
               className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
                 activeTab === 'sabbatical' 
                   ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
@@ -738,17 +753,17 @@ export default function App() {
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('realEstate')}
+              onClick={() => setActiveTab('guardrails')}
               className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2",
-                activeTab === 'realEstate' 
-                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
+                activeTab === 'guardrails' 
+                  ? "border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400" 
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
               )}
             >
               <div className="flex items-center gap-2">
-                <Home className="w-4 h-4" />
-                {t('realEstateTab')}
+                <ShieldAlert className="w-4 h-4" />
+                Guardrails
               </div>
             </button>
           </div>
@@ -762,6 +777,13 @@ export default function App() {
               expectedReturn={params.expectedReturn}
               realEstateReturn={params.realEstateReturn}
               monthlySpend={params.monthlySpend}
+            />
+          ) : activeTab === 'guardrails' ? (
+            <GuardrailsCalculator 
+              initialWealth={totalWealth}
+              expectedReturn={params.expectedReturn}
+              inflationRate={params.inflationRate}
+              currency={currency}
             />
           ) : activeTab === 'realEstate' ? (
             <RealEstateCalculator 

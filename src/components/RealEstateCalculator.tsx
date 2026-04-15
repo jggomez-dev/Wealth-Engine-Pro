@@ -29,6 +29,7 @@ export const DEFAULT_PROPERTY: Omit<PropertyConfig, 'id' | 'name'> = {
   appreciationRate: 3,
   rentGrowthRate: 3,
   expenseGrowthRate: 3,
+  currentLoanBalanceOverride: 0,
 };
 
 export interface RealEstatePropertyData {
@@ -116,7 +117,7 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
     const {
       purchaseDate, purchasePrice, closingCosts, rehabCosts, downPaymentPercent, interestRate, loanTerm, extraPrincipalMonthly, oneTimePrincipal, oneTimePrincipalYear,
       grossRent, otherIncome, propertyTaxes, insurance, repairsPercent, vacancyPercent,
-      capexPercent, managementPercent, hoa, appreciationRate, rentGrowthRate, expenseGrowthRate
+      capexPercent, managementPercent, hoa, appreciationRate, rentGrowthRate, expenseGrowthRate, currentLoanBalanceOverride
     } = activeProperty;
 
     const [pYearStr, pMonthStr] = (purchaseDate || new Date().toISOString().slice(0, 7)).split('-');
@@ -247,6 +248,10 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
     } else if (monthsSincePurchase <= 0) {
       currentValForLedger = purchasePrice;
       currentBalanceForLedger = loanAmount;
+    }
+
+    if (currentLoanBalanceOverride !== undefined && currentLoanBalanceOverride > 0) {
+      currentBalanceForLedger = currentLoanBalanceOverride;
     }
 
     return {
@@ -423,10 +428,13 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
             </div>
             <div className="grid grid-cols-2 gap-4">
               <InputGroup label={t('loanTerm')} value={activeProperty.loanTerm} onChange={(v: number) => updateProperty('loanTerm', v)} suffix="yrs" />
-              <InputGroup label={t('extraPrincipal')} value={activeProperty.extraPrincipalMonthly} onChange={(v: number) => updateProperty('extraPrincipalMonthly', v)} prefix="$" step="50" />
+              <InputGroup label="Current Loan Balance (Optional)" value={activeProperty.currentLoanBalanceOverride || 0} onChange={(v: number) => updateProperty('currentLoanBalanceOverride', v)} prefix="$" step="1000" />
             </div>
             <div className="grid grid-cols-2 gap-4">
+              <InputGroup label={t('extraPrincipal')} value={activeProperty.extraPrincipalMonthly} onChange={(v: number) => updateProperty('extraPrincipalMonthly', v)} prefix="$" step="50" />
               <InputGroup label={t('oneTimePrincipal')} value={activeProperty.oneTimePrincipal} onChange={(v: number) => updateProperty('oneTimePrincipal', v)} prefix="$" step="1000" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <InputGroup label={t('oneTimePrincipalYear')} value={activeProperty.oneTimePrincipalYear} onChange={(v: number) => updateProperty('oneTimePrincipalYear', v)} step="1" />
             </div>
             <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
