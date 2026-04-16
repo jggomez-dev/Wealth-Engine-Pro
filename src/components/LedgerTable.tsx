@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Asset, AssetType, TaxStatus } from '../types';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatFullCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { Plus, Trash2, X, Search, Loader2, Edit2 } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
@@ -399,7 +399,7 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                         )}
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-xs lg:text-sm font-mono text-slate-600 dark:text-slate-300 text-right">
-                        {asset.price ? formatCurrency(asset.price, currency) : '—'}
+                        {asset.price ? formatFullCurrency(asset.price, currency) : '—'}
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-right">
                         {asset.qty === 0 ? (
@@ -415,7 +415,7 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                           </div>
                         ) : (
                           <span className="text-xs lg:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 pr-1">
-                            {formatCurrency(asset.total, currency)}
+                            {formatFullCurrency(asset.total, currency)}
                           </span>
                         )}
                       </td>
@@ -436,7 +436,7 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                       {account} {t('total')}
                     </td>
                     <td className="px-6 py-2 text-right text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                      {formatCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + a.total, 0), currency)}
+                      {formatFullCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + a.total, 0), currency)}
                     </td>
                     <td></td>
                   </tr>

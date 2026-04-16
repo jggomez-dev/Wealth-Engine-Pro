@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth, PropertyConfig } from './types';
-import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear } from './utils/finance';
+import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth, PropertyConfig, AssetType } from './types';
+import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear, MonteCarloResults } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
 import Sidebar from './components/Sidebar';
@@ -16,6 +16,7 @@ import { HealthcareCalculator } from './components/HealthcareCalculator';
 import SabbaticalCalculator from './components/SabbaticalCalculator';
 import GuardrailsCalculator from './components/GuardrailsCalculator';
 import PortfolioStrategy from './components/PortfolioStrategy';
+import HealthCard from './components/HealthCard';
 import RealEstateCalculator, { RealEstatePropertyData, DEFAULT_PROPERTY } from './components/RealEstateCalculator';
 import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home, ShieldAlert, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
@@ -41,6 +42,17 @@ const INITIAL_ASSETS: Asset[] = [
   { id: '15', account: 'IRA 2', ticker: 'CASH', type: 'Cash', taxStatus: 'Pre-Tax', qty: 0, beta: 0, total: 183.56, isEnabled: true },
 ];
 
+const ASSET_CLASS_METRICS: Record<AssetType, { mu: number; sigma: number }> = {
+  'Domestic Stock': { mu: 0.08, sigma: 0.15 },
+  'International Stock': { mu: 0.07, sigma: 0.18 },
+  'Bonds': { mu: 0.04, sigma: 0.06 },
+  'Real Estate': { mu: 0.05, sigma: 0.10 },
+  'Cash': { mu: 0.02, sigma: 0.005 },
+  'Crypto': { mu: 0.15, sigma: 0.70 },
+  'Gold': { mu: 0.04, sigma: 0.15 },
+  'Private': { mu: 0.12, sigma: 0.25 }
+};
+
 export default function App() {
   const { t, language, setLanguage } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
@@ -54,7 +66,8 @@ export default function App() {
   ]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate' | 'guardrails' | 'portfolioStrategy'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'calculators' | 'realEstate' | 'portfolioStrategy'>('dashboard');
+  const [calculatorSubTab, setCalculatorSubTab] = useState<'healthcare' | 'sabbatical' | 'guardrails'>('healthcare');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -86,6 +99,7 @@ export default function App() {
   const [coachResponse, setCoachResponse] = useState('');
   const [isCoaching, setIsCoaching] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRebalanceAlertDismissed, setIsRebalanceAlertDismissed] = useState(false);
 
   const askCoach = async () => {
     if (!coachPrompt.trim()) return;
@@ -507,6 +521,73 @@ export default function App() {
     return clonedAssets;
   }, [activeAssets, liabilities, realEstateProperties]);
 
+  const strategyCategories = useMemo(() => {
+    return Object.keys(params.portfolioTargets || {}) as AssetType[];
+  }, [params.portfolioTargets]);
+
+  const portfolioData = useMemo(() => {
+    const totalsByType: Record<string, number> = {};
+    netAssetsForCharts.forEach(asset => {
+      totalsByType[asset.type] = (totalsByType[asset.type] || 0) + asset.total;
+    });
+
+    const strategyTotalValue = strategyCategories.reduce((sum, type) => sum + (totalsByType[type] || 0), 0);
+
+    return strategyCategories.map(type => {
+      const currentTotal = totalsByType[type] || 0;
+      const currentAllocation = strategyTotalValue > 0 ? (currentTotal / strategyTotalValue) * 100 : 0;
+      const targetAllocation = params.portfolioTargets?.[type] || 0;
+      const drift = currentAllocation - targetAllocation;
+      const isOutofWhack = Math.abs(drift) > params.rebalanceThreshold;
+      
+      const targetValue = strategyTotalValue * (targetAllocation / 100);
+      const rebalanceAmount = targetValue - currentTotal;
+
+      return {
+        type,
+        currentTotal,
+        currentAllocation,
+        targetAllocation,
+        targetValue,
+        drift,
+        isOutofWhack,
+        rebalanceAmount
+      };
+    }).sort((a, b) => b.currentTotal - a.currentTotal);
+  }, [netAssetsForCharts, params.rebalanceThreshold, params.portfolioTargets, strategyCategories]);
+
+  const strategyTotalValue = useMemo(() => portfolioData.reduce((sum, a) => sum + a.currentTotal, 0), [portfolioData]);
+  const outOfWhackCount = useMemo(() => portfolioData.filter(d => d.isOutofWhack && d.targetAllocation > 0).length, [portfolioData]);
+
+  const currentAllocationMetrics = useMemo(() => {
+    if (strategyTotalValue === 0) return { mu: 0.07, sigma: 0.15 };
+    let weightedMu = 0;
+    let weightedSigma = 0;
+    
+    portfolioData.forEach(p => {
+      const weight = p.currentTotal / strategyTotalValue;
+      const metrics = ASSET_CLASS_METRICS[p.type];
+      weightedMu += weight * metrics.mu;
+      weightedSigma += weight * metrics.sigma;
+    });
+    
+    return { mu: weightedMu, sigma: weightedSigma };
+  }, [portfolioData, strategyTotalValue]);
+
+  const targetAllocationMetrics = useMemo(() => {
+    let weightedMu = 0;
+    let weightedSigma = 0;
+    
+    portfolioData.forEach(p => {
+      const weight = p.targetAllocation / 100;
+      const metrics = ASSET_CLASS_METRICS[p.type];
+      weightedMu += weight * metrics.mu;
+      weightedSigma += weight * metrics.sigma;
+    });
+    
+    return { mu: weightedMu, sigma: weightedSigma };
+  }, [portfolioData]);
+
   const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
   const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
   const totalWealth = totalAssets - totalLiabilities; // Net Worth
@@ -604,26 +685,8 @@ export default function App() {
   );
 
   const needsRebalance = useMemo(() => {
-    if (totalAssets === 0 || !params.portfolioTargets) return false;
-    
-    // Group assets by type using netAssetsForCharts to reflect real estate after mortgages
-    const totalsByType: Record<string, number> = {};
-    netAssetsForCharts.forEach(asset => {
-      totalsByType[asset.type] = (totalsByType[asset.type] || 0) + asset.total;
-    });
-
-    const strategyCategories = Object.keys(params.portfolioTargets);
-    const strategyTotalValue = strategyCategories.reduce((sum, type) => sum + (totalsByType[type] || 0), 0);
-
-    if (strategyTotalValue === 0) return false;
-
-    return Object.entries(params.portfolioTargets).some(([type, targetValue]) => {
-      if (targetValue === undefined || targetValue === null) return false;
-      const currentTotal = totalsByType[type] || 0;
-      const currentAlloc = (currentTotal / strategyTotalValue) * 100;
-      return Math.abs(currentAlloc - Number(targetValue)) > params.rebalanceThreshold;
-    });
-  }, [netAssetsForCharts, totalAssets, params.portfolioTargets, params.rebalanceThreshold]);
+    return outOfWhackCount > 0 && !isRebalanceAlertDismissed;
+  }, [outOfWhackCount, isRebalanceAlertDismissed]);
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden relative">
@@ -771,31 +834,17 @@ export default function App() {
               </div>
             </button>
             <button
-              onClick={() => setActiveTab('healthcare')}
+              onClick={() => setActiveTab('calculators')}
               className={cn(
                 "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
-                activeTab === 'healthcare' 
+                activeTab === 'calculators' 
                   ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
                   : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
               )}
             >
               <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                {t('healthcareCosts')}
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('sabbatical')}
-              className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
-                activeTab === 'sabbatical' 
-                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <Briefcase className="w-4 h-4" />
-                {t('sabbaticalTab')}
+                <BrainCircuit className="w-4 h-4" />
+                Calculators
               </div>
             </button>
             <button
@@ -812,43 +861,76 @@ export default function App() {
                 {t('portfolioStrategy')}
               </div>
             </button>
-            <button
-              onClick={() => setActiveTab('guardrails')}
-              className={cn(
-                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
-                activeTab === 'guardrails' 
-                  ? "border-amber-600 text-amber-600 dark:border-amber-400 dark:text-amber-400" 
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4" />
-                Guardrails
-              </div>
-            </button>
           </div>
 
-          {activeTab === 'healthcare' ? (
-            <HealthcareCalculator />
-          ) : activeTab === 'sabbatical' ? (
-            <SabbaticalCalculator 
-              assets={netAssetsForCharts}
-              realEstateProperties={realEstateProperties}
-              expectedReturn={params.expectedReturn}
-              realEstateReturn={params.realEstateReturn}
-              monthlySpend={params.monthlySpend}
-            />
+          {activeTab === 'calculators' ? (
+            <div className="space-y-6">
+              <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl w-fit">
+                <button
+                  onClick={() => setCalculatorSubTab('healthcare')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
+                    calculatorSubTab === 'healthcare' 
+                      ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  )}
+                >
+                  Healthcare
+                </button>
+                <button
+                  onClick={() => setCalculatorSubTab('sabbatical')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
+                    calculatorSubTab === 'sabbatical' 
+                      ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  )}
+                >
+                  Sabbatical
+                </button>
+                <button
+                  onClick={() => setCalculatorSubTab('guardrails')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-lg transition-all",
+                    calculatorSubTab === 'guardrails' 
+                      ? "bg-white dark:bg-slate-900 text-indigo-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  )}
+                >
+                  Guardrails
+                </button>
+              </div>
+
+              {calculatorSubTab === 'healthcare' && <HealthcareCalculator />}
+              {calculatorSubTab === 'sabbatical' && (
+                <SabbaticalCalculator 
+                  assets={netAssetsForCharts}
+                  realEstateProperties={realEstateProperties}
+                  expectedReturn={params.expectedReturn}
+                  realEstateReturn={params.realEstateReturn}
+                  monthlySpend={params.monthlySpend}
+                />
+              )}
+              {calculatorSubTab === 'guardrails' && (
+                <GuardrailsCalculator 
+                  initialWealth={totalWealth}
+                  expectedReturn={params.expectedReturn}
+                  inflationRate={params.inflationRate}
+                  currency={currency}
+                />
+              )}
+            </div>
           ) : activeTab === 'portfolioStrategy' ? (
             <PortfolioStrategy 
               assets={netAssetsForCharts}
               params={params}
               setParams={updateParams}
-            />
-          ) : activeTab === 'guardrails' ? (
-            <GuardrailsCalculator 
-              initialWealth={totalWealth}
-              expectedReturn={params.expectedReturn}
-              inflationRate={params.inflationRate}
+              portfolioData={portfolioData}
+              strategyTotalValue={strategyTotalValue}
+              outOfWhackCount={outOfWhackCount}
+              currentMetrics={currentAllocationMetrics}
+              targetMetrics={targetAllocationMetrics}
+              mcResults={mcResults}
               currency={currency}
             />
           ) : activeTab === 'realEstate' ? (
@@ -884,10 +966,12 @@ export default function App() {
             <>
               {needsRebalance && (
                 <div 
-                  onClick={() => setActiveTab('portfolioStrategy')}
-                  className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-amber-100/50 transition-colors group"
+                  className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex items-center justify-between gap-4 transition-colors group relative"
                 >
-                  <div className="flex items-center gap-4">
+                  <div 
+                    onClick={() => setActiveTab('portfolioStrategy')}
+                    className="flex flex-1 items-center gap-4 cursor-pointer"
+                  >
                     <div className="p-2 bg-amber-100 dark:bg-amber-800 rounded-lg">
                       <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                     </div>
@@ -900,15 +984,30 @@ export default function App() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-1 transition-transform">
-                    {t('portfolioStrategy')}
-                    <ArrowRight className="w-4 h-4" />
+                  <div className="flex items-center gap-3">
+                    <div 
+                      onClick={() => setActiveTab('portfolioStrategy')}
+                      className="flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-1 transition-transform cursor-pointer"
+                    >
+                      {t('portfolioStrategy')}
+                      <ArrowRight className="w-4 h-4" />
+                    </div>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsRebalanceAlertDismissed(true);
+                      }}
+                      className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-800 rounded-lg text-amber-400 hover:text-amber-600 transition-colors"
+                      title="Dismiss"
+                    >
+                      <CloseIcon className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               )}
 
               {/* Top Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6">
             <MetricCard
               title={params.marketCrash > 0 ? t('crashedNetWorth') : t('netWorth')}
               value={formatCurrency(params.marketCrash > 0 ? totalWealth * (1 - params.marketCrash) : totalWealth, currency)}
@@ -929,14 +1028,6 @@ export default function App() {
               icon={<Target className="w-5 h-5" />}
               progress={totalWealth / fiTarget}
             />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
-            <MetricCard
-              title={t('monthlySavings')}
-              value={formatCurrency(params.monthlySavings, currency)}
-              subtitle={t('monthlySavingsSubtitle')}
-              icon={<TrendingUp className="w-5 h-5" />}
-            />
             <MetricCard
               title={t('liquidityRunway')}
               value={`${runwayMonths.toFixed(1)} ${t('months')}`}
@@ -947,67 +1038,17 @@ export default function App() {
             />
           </div>
 
-          {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6 min-w-0">
+            <div className="min-w-0">
               <PortfolioChart assets={netAssetsForCharts} />
-              <AggressivenessCard 
-                aggressiveness={params.aggressiveness}
-                onChange={(v) => updateParams({ ...params, aggressiveness: v })}
-                totalWealth={totalWealth}
-                currency={currency}
-              />
             </div>
-            <div className="space-y-6 min-w-0">
-              <TaxBreakdownChart assets={netAssetsForCharts} />
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
-                  {t('taxStrategy')}
-                </h3>
-                <div className="space-y-3">
-                  {(() => {
-                    const taxGroups = {
-                      'Post-Tax': 0,
-                      'Pre-Tax': 0,
-                      'Locked': 0,
-                    };
-                    netAssetsForCharts.forEach(a => {
-                      if (a.taxStatus === 'Roth') {
-                        const basis = a.basis || 0;
-                        const earnings = Math.max(0, a.total - basis);
-                        taxGroups['Post-Tax'] += basis;
-                        taxGroups['Locked'] += earnings;
-                      } else if (a.taxStatus === 'Pre-Tax' || a.taxStatus === 'Post-Tax' || a.taxStatus === 'Locked') {
-                        taxGroups[a.taxStatus] += a.total;
-                      }
-                    });
-
-                    return [
-                      { label: t('postTax'), status: 'Post-Tax', color: 'text-emerald-600' },
-                      { label: t('preTax'), status: 'Pre-Tax', color: 'text-indigo-600' },
-                      { label: t('locked'), status: 'Locked', color: 'text-amber-600' },
-                    ].map((item) => {
-                      const value = taxGroups[item.status as keyof typeof taxGroups];
-                      const percentage = totalWealth > 0 ? (value / totalWealth) * 100 : 0;
-                      return (
-                        <div key={item.status} className="flex justify-between items-center gap-2">
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-xs text-slate-500 truncate">{item.label}</span>
-                            <span className="text-[10px] font-bold text-slate-400">{percentage.toFixed(1)}% {t('ofTotal')}</span>
-                          </div>
-                          <span className={`text-sm font-mono font-bold ${item.color} shrink-0`}>
-                            {formatCurrency(value, currency)}
-                          </span>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
+            <div className="min-w-0">
+              <TaxBreakdownChart assets={netAssetsForCharts} currency={currency} />
             </div>
-            <div className="lg:col-span-2 min-w-0">
-              <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
-            </div>
+          </div>
+          
+          <div className="w-full">
+            <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
           </div>
 
           {/* Historical Net Worth */}
@@ -1045,9 +1086,9 @@ export default function App() {
               </div>
             )}
           </div>
-          
-          {/* Health Checks & Ledger */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
+
+          {/* Health Checks */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
             <HealthCard
               title={t('liquidityCheck')}
               status={totalCash / totalWealth < 0.10 ? 'error' : 'success'}
@@ -1077,66 +1118,32 @@ export default function App() {
               message={`${t('yearly')}: ${formatCurrency(totalWealth * params.withdrawalRate, currency)} | ${t('monthly')}: ${formatCurrency((totalWealth * params.withdrawalRate) / 12, currency)}`}
             />
           </div>
+          
+          {activeTab === 'dashboard' && (
+            <>
+              {/* Ledger */}
+              <LedgerTable 
+                assets={assets} 
+                currency={currency}
+                onUpdateAsset={updateAsset} 
+                onAddAsset={addAsset}
+                onDeleteAsset={deleteAsset}
+              />
 
-          {/* Ledger */}
-          <LedgerTable 
-            assets={assets} 
-            currency={currency}
-            onUpdateAsset={updateAsset} 
-            onAddAsset={addAsset}
-            onDeleteAsset={deleteAsset}
-          />
-
-          {/* Liabilities */}
-          <LiabilitiesTable
-            liabilities={liabilities}
-            currency={currency}
-            onUpdateLiability={updateLiability}
-            onAddLiability={addLiability}
-            onDeleteLiability={deleteLiability}
-          />
+              {/* Liabilities */}
+              <LiabilitiesTable
+                liabilities={liabilities}
+                currency={currency}
+                onUpdateLiability={updateLiability}
+                onAddLiability={addLiability}
+                onDeleteLiability={deleteLiability}
+              />
+            </>
+          )}
             </>
           )}
         </div>
       </main>
-    </div>
-  );
-}
-
-interface HealthCardProps {
-  title: string;
-  status: 'success' | 'warning' | 'error' | 'info';
-  message: string;
-  info?: string;
-}
-
-function HealthCard({ title, status, message, info }: HealthCardProps) {
-  const styles = {
-    success: { bg: 'bg-emerald-50', border: 'border-emerald-100', text: 'text-emerald-700', icon: <CheckCircle2 className="w-4 h-4" /> },
-    warning: { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-700', icon: <AlertCircle className="w-4 h-4" /> },
-    error: { bg: 'bg-rose-50', border: 'border-rose-100', text: 'text-rose-700', icon: <AlertCircle className="w-4 h-4" /> },
-    info: { bg: 'bg-indigo-50', border: 'border-indigo-100', text: 'text-indigo-700', icon: <Info className="w-4 h-4" /> },
-  };
-
-  const current = styles[status];
-
-  return (
-    <div className={`p-3 lg:p-4 rounded-xl border ${current.bg} ${current.border} flex gap-3 items-start relative group min-w-0`}>
-      <div className={cn("shrink-0", current.text)}>{current.icon}</div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between mb-1 gap-2">
-          <h4 className={`text-[10px] font-bold uppercase tracking-widest ${current.text} leading-tight truncate`}>{title}</h4>
-          {info && (
-            <div className="relative shrink-0">
-              <Info className="w-3 h-3 text-slate-400 cursor-help" />
-              <div className="absolute top-full right-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                {info}
-              </div>
-            </div>
-          )}
-        </div>
-        <p className="text-sm font-medium text-slate-700 leading-snug break-words">{message}</p>
-      </div>
     </div>
   );
 }

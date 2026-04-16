@@ -53,7 +53,9 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
   const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 
-  const MUTUAL_FUNDS = ['VTIAX', 'VTSAX', 'VTTSX', 'FZROX'];
+  const isMutualFund = (symbol: string) => {
+    return symbol.length === 5 && symbol.toUpperCase().endsWith('X');
+  };
 
   function getMockPrice(symbol: string): number {
     const FALLBACK: Record<string, number> = { 
@@ -69,13 +71,10 @@ async function startServer() {
 
   function normalizeTicker(symbol: string): string {
     let normalized = symbol.toUpperCase().trim();
-    // Handle common dual-class shares like Berkshire Hathaway and Brown-Forman
     if (normalized === 'BRKB' || normalized === 'BRK.B' || normalized === 'BRK B') return 'BRK-B';
     if (normalized === 'BRKA' || normalized === 'BRK.A' || normalized === 'BRK A') return 'BRK-A';
     if (normalized === 'BFB' || normalized === 'BF.B' || normalized === 'BF B') return 'BF-B';
     if (normalized === 'BFA' || normalized === 'BF.A' || normalized === 'BF A') return 'BF-A';
-    
-    // General fallback: replace dots and spaces with hyphens for Yahoo Finance compatibility
     return normalized.replace(/[\.\s]/g, '-');
   }
 
@@ -124,19 +123,38 @@ async function startServer() {
         try {
           let price: number | null = null;
           
-          if (MUTUAL_FUNDS.includes(symbol)) {
-            console.log(`[${new Date().toISOString()}] Requesting Yahoo Finance for mutual fund: ${symbol}`);
+          if (isMutualFund(symbol)) {
+            console.log(`[${new Date().toISOString()}] Requesting price for mutual fund: ${symbol}`);
             try {
-              const response = await nodeFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
-              if (response.ok) {
-                const data: any = await response.json();
-                price = data?.chart?.result?.[0]?.meta?.regularMarketPrice || data?.chart?.result?.[0]?.meta?.previousClose || null;
-                console.log(`[${new Date().toISOString()}] Yahoo Finance response for ${symbol}:`, price);
-              } else {
-                console.error(`Yahoo Finance error for ${symbol}: ${response.status} ${response.statusText}`);
+              const headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              };
+              
+              // Try different Yahoo Finance endpoints
+              const endpoints = [
+                `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`,
+                `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
+              ];
+              
+              for (const url of endpoints) {
+                const response = await nodeFetch(url, { headers });
+                if (response.ok) {
+                  const data: any = await response.json();
+                  if (url.includes('chart')) {
+                    const result = data?.chart?.result?.[0];
+                    price = result?.meta?.regularMarketPrice || result?.meta?.previousClose;
+                  } else {
+                    const result = data?.quoteResponse?.result?.[0];
+                    price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask;
+                  }
+                  if (price) break;
+                } else {
+                  console.warn(`Yahoo endpoint failed (${response.status}): ${url}`);
+                }
               }
+              console.log(`[${new Date().toISOString()}] Price response for mutual fund ${symbol}: ${price}`);
             } catch (err) {
-              console.error(`Yahoo Finance fetch failed for ${symbol}:`, err);
+              console.error(`Mutual fund fetch failed for ${symbol}:`, err);
             }
           } else if (FINNHUB_API_KEY) {
             // Delay each request by 1 second to stay under the Finnhub free tier limit

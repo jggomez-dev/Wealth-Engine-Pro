@@ -2,17 +2,38 @@ import React, { useMemo, useState } from 'react';
 import { Asset, SimulationParams, AssetType } from '../types';
 import { useLanguage } from '../lib/LanguageContext';
 import { formatCurrency, cn } from '../lib/utils';
-import { AlertTriangle, CheckCircle2, Info, ArrowRight, TrendingUp, TrendingDown, Plus, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, ArrowRight, TrendingUp, TrendingDown, Plus, X, BrainCircuit } from 'lucide-react';
+import HealthCard from './HealthCard';
+import ProjectionChart from './ProjectionChart';
+import { MonteCarloResults } from '../utils/finance';
 
 interface PortfolioStrategyProps {
   assets: Asset[];
   params: SimulationParams;
   setParams: (params: SimulationParams) => void;
+  portfolioData?: any[];
+  strategyTotalValue?: number;
+  outOfWhackCount?: number;
+  currentMetrics: { mu: number; sigma: number };
+  targetMetrics: { mu: number; sigma: number };
+  mcResults: MonteCarloResults;
+  currency: 'USD' | 'EUR';
 }
 
 const ALL_CATEGORIES: AssetType[] = ['Real Estate', 'Domestic Stock', 'International Stock', 'Crypto', 'Gold', 'Cash', 'Bonds', 'Private'];
 
-export default function PortfolioStrategy({ assets, params, setParams }: PortfolioStrategyProps) {
+export default function PortfolioStrategy({ 
+  assets, 
+  params, 
+  setParams,
+  portfolioData: propsPortfolioData,
+  strategyTotalValue: propsStrategyTotalValue,
+  outOfWhackCount: propsOutOfWhackCount,
+  currentMetrics,
+  targetMetrics,
+  mcResults,
+  currency
+}: PortfolioStrategyProps) {
   const { t } = useLanguage();
   const threshold = params.rebalanceThreshold;
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -22,7 +43,9 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
     return Object.keys(params.portfolioTargets || {}) as AssetType[];
   }, [params.portfolioTargets]);
 
-  const portfolioData = useMemo(() => {
+  const internalPortfolioData = useMemo(() => {
+    if (propsPortfolioData) return propsPortfolioData;
+    
     // Group by AssetType
     const totalsByType: Record<string, number> = {};
     assets.forEach(asset => {
@@ -47,18 +70,20 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
         currentTotal,
         currentAllocation,
         targetAllocation,
+        targetValue,
         drift,
         isOutofWhack,
         rebalanceAmount
       };
     }).sort((a, b) => b.currentTotal - a.currentTotal);
-  }, [assets, threshold, params.portfolioTargets, strategyCategories]);
+  }, [assets, threshold, params.portfolioTargets, strategyCategories, propsPortfolioData]);
 
-  const strategyTotalValue = useMemo(() => portfolioData.reduce((sum, a) => sum + a.currentTotal, 0), [portfolioData]);
+  const portfolioData = propsPortfolioData || internalPortfolioData;
+  const strategyTotalValue = propsStrategyTotalValue ?? portfolioData.reduce((sum, a) => sum + a.currentTotal, 0);
   const totalTarget = useMemo(() => portfolioData.reduce((sum, a) => sum + a.targetAllocation, 0), [portfolioData]);
   const isTargetValid = Math.abs(totalTarget - 100) < 0.01;
 
-  const outOfWhackCount = useMemo(() => portfolioData.filter(d => d.isOutofWhack && d.targetAllocation > 0).length, [portfolioData]);
+  const outOfWhackCount = propsOutOfWhackCount ?? portfolioData.filter(d => d.isOutofWhack && d.targetAllocation > 0).length;
 
   const handleUpdateTarget = (type: string, value: number) => {
     const newTargets = { ...(params.portfolioTargets || {}) };
@@ -85,39 +110,6 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Alert Banner */}
-      {outOfWhackCount > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-4">
-          <div className="p-2 bg-amber-100 dark:bg-amber-800 rounded-lg">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">
-              {t('rebalanceNeeded')}
-            </h3>
-            <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-              {t('rebalanceNeededDesc').replace('{threshold}', threshold.toString())}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {outOfWhackCount === 0 && isTargetValid && strategyTotalValue > 0 && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-start gap-4">
-          <div className="p-2 bg-emerald-100 dark:bg-emerald-800 rounded-lg">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-100">
-              {t('noRebalanceNeeded')}
-            </h3>
-            <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">
-              Your portfolio is currently aligned with your target strategy within the {threshold}% tolerance.
-            </p>
-          </div>
-        </div>
-      )}
-
       <div className="space-y-6">
         {/* Strategy Table */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -143,6 +135,7 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
                 <tr className="bg-slate-50/50 dark:bg-slate-800/50">
                   <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">Asset Class</th>
                   <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">{t('currentAllocation')}</th>
+                  <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Target Value</th>
                   <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">{t('targetAllocation')}</th>
                   <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">{t('drift')}</th>
                   <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">{t('rebalanceAction')}</th>
@@ -170,6 +163,11 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono">
                         {formatCurrency(item.currentTotal)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                        {formatCurrency(item.targetValue)}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -278,51 +276,163 @@ export default function PortfolioStrategy({ assets, params, setParams }: Portfol
           )}
         </div>
 
-        {/* Info Card & Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-indigo-600 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200 dark:shadow-none h-full">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <Info className="w-5 h-5" />
-              Strategy Guide
-            </h3>
-            <div className="mt-4 space-y-4 text-indigo-100 text-sm leading-relaxed">
-              <p>
-                A <strong>Target Allocation</strong> represents your ideal portfolio mix. Over time, market movements cause your actual holdings to "drift" away from these targets.
-              </p>
-              <p>
-                The <strong>Rebalance Threshold</strong> (currently {threshold}%) is your tolerance level. When an asset drifts by more than this amount, it's time to sell winners and buy losers to restore your strategy.
-              </p>
-              <div className="pt-4 border-t border-indigo-500/50">
-                <div className="flex items-center gap-2 font-bold text-white">
-                  <ArrowRight className="w-4 h-4" />
-                  Pro Tip
-                </div>
-                <p className="mt-1">
-                  Rebalancing forces you to "buy low and sell high" automatically, which is one of the most effective ways to manage risk and improve long-term returns.
+        {/* Strategy Advice & Scenarios */}
+        <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 bg-indigo-600 rounded-2xl p-6 lg:p-8 text-white shadow-lg shadow-indigo-100 dark:shadow-none min-h-[220px] flex flex-col justify-center">
+              <h3 className="text-lg font-bold flex items-center gap-2 mb-4">
+                <Info className="w-5 h-5" />
+                Strategy Guide
+              </h3>
+              <div className="space-y-4 text-indigo-100 text-sm leading-relaxed">
+                <p>
+                  A <strong>Target Allocation</strong> represents your ideal portfolio mix. Over time, market movements cause your actual holdings to "drift" away from these targets.
                 </p>
+                <p>
+                  The <strong>Rebalance Threshold</strong> ({threshold}%) is your tolerance level for "drift". When an asset drifts by more than this amount, it's time to sell winners and buy losers to restore your strategy.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 lg:p-8 flex flex-col justify-center min-h-[220px]">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-widest opacity-60">Rebalance Summary</h3>
+              <div className="space-y-6">
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-sm text-slate-500">Total Strategy Value</span>
+                  <span className="text-lg font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(strategyTotalValue, currency)}</span>
+                </div>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-sm text-slate-500">Assets Out of Range</span>
+                  <span className={cn(
+                    "text-lg font-bold",
+                    outOfWhackCount > 0 ? "text-amber-600" : "text-emerald-600"
+                  )}>{outOfWhackCount}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-500">Threshold Tolerance</span>
+                  <span className="text-lg font-bold text-indigo-600 font-mono">{threshold}%</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 h-full flex flex-col justify-center">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Rebalance Summary</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs text-slate-500">Total Strategy Value</span>
-                <span className="text-sm font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(strategyTotalValue)}</span>
+          {/* Projection Scenarios */}
+          <div className="bg-slate-50 dark:bg-slate-950 rounded-3xl p-6 lg:p-10 border border-slate-200 dark:border-slate-800">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <BrainCircuit className="w-5 h-5 text-indigo-600" />
+                  Projection Scenarios
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">Compare how your Current vs. Target allocation impacts long-term wealth.</p>
               </div>
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs text-slate-500">Assets Out of Range</span>
-                <span className={cn(
-                  "text-sm font-bold",
-                  outOfWhackCount > 0 ? "text-amber-600" : "text-emerald-600"
-                )}>{outOfWhackCount}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-500">Alert Threshold</span>
-                <span className="text-sm font-bold text-indigo-600">{threshold}%</span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setParams({ ...params, expectedReturn: currentMetrics.mu, volatility: currentMetrics.sigma })}
+                  className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-all shadow-sm flex items-center gap-2"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  Simulate Current
+                </button>
+                <button
+                  onClick={() => setParams({ ...params, expectedReturn: targetMetrics.mu, volatility: targetMetrics.sigma })}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Simulate Target
+                </button>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Current Allocation Analysis */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Current Allocation</h4>
+                  <div className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-bold text-slate-500">ACTIVE MIX</div>
+                </div>
+                <div className="grid grid-cols-2 gap-6 mb-8">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Expected Return</span>
+                    <span className="text-2xl font-bold text-slate-900 dark:text-white">{(currentMetrics.mu * 100).toFixed(2)}%</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Portfolio Volatility</span>
+                    <span className="text-2xl font-bold text-slate-900 dark:text-white">{(currentMetrics.sigma * 100).toFixed(2)}%</span>
+                  </div>
+                </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-3">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 italic">Sharpe Ratio (Estimated)</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300">{((currentMetrics.mu - 0.02) / currentMetrics.sigma).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 italic">Expected Efficiency</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Moderate</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Allocation Analysis */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border-2 border-indigo-100 dark:border-indigo-900/30 ring-4 ring-indigo-50/50 dark:ring-indigo-900/10">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Target Allocation</h4>
+                  <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 rounded text-[10px] font-bold text-indigo-600">STRATEGY</div>
+                </div>
+                <div className="grid grid-cols-2 gap-6 mb-8">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Expected Return</span>
+                    <span className={cn(
+                      "text-2xl font-bold",
+                      targetMetrics.mu >= currentMetrics.mu ? "text-emerald-600" : "text-rose-600"
+                    )}>
+                      {(targetMetrics.mu * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Portfolio Volatility</span>
+                    <span className={cn(
+                      "text-2xl font-bold",
+                      targetMetrics.sigma <= currentMetrics.sigma ? "text-emerald-600" : "text-amber-600"
+                    )}>
+                      {(targetMetrics.sigma * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl space-y-3">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-indigo-600/70 italic">Sharpe Ratio (Estimated)</span>
+                    <span className="font-bold text-indigo-900 dark:text-indigo-100">{((targetMetrics.mu - 0.02) / targetMetrics.sigma).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-indigo-600/70 italic">Efficiency Delta</span>
+                    <span className={cn(
+                      "font-bold",
+                      (targetMetrics.mu/targetMetrics.sigma) > (currentMetrics.mu/currentMetrics.sigma) ? "text-emerald-600" : "text-slate-600"
+                    )}>
+                      {(((targetMetrics.mu/targetMetrics.sigma) / (currentMetrics.mu/currentMetrics.sigma) - 1) * 100).toFixed(1)}% {((targetMetrics.mu/targetMetrics.sigma) > (currentMetrics.mu/currentMetrics.sigma)) ? 'Improvement' : 'Change'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800">
+              <div className="flex gap-4">
+                <Info className="w-6 h-6 text-indigo-600 shrink-0" />
+                <div className="text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">
+                  <p className="font-bold mb-1 italic text-indigo-700 dark:text-indigo-300">How this impacts your Monte Carlo Simulation:</p>
+                  By clicking "Simulate", you are injecting the weighted return and risk characteristics of that specific allocation into the main project engine. 
+                  The <strong>P50 (Median)</strong> outcome will shift based on the <em>Expected Return</em>, while the <strong>P10/P90 (range of outcomes)</strong> will widen or narrow based on the <em>Volatility</em>.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Simulation Chart */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">Monte Carlo Projection</h3>
+            <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
           </div>
         </div>
       </div>
