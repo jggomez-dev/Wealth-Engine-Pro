@@ -86,8 +86,8 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('balance')}</label>
               <input
                 type="number"
-                value={newLiability.balance}
-                onChange={e => setNewLiability(prev => ({ ...prev, balance: parseFloat(e.target.value) || 0 }))}
+                value={newLiability.balance === 0 ? '' : newLiability.balance}
+                onChange={e => setNewLiability(prev => ({ ...prev, balance: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                 className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 outline-none"
               />
             </div>
@@ -96,8 +96,8 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
               <input
                 type="number"
                 step="0.1"
-                value={newLiability.interestRate === 0 ? 0 : Number((newLiability.interestRate * 100).toFixed(1))}
-                onChange={e => setNewLiability(prev => ({ ...prev, interestRate: (parseFloat(e.target.value) || 0) / 100 }))}
+                value={newLiability.interestRate === 0 ? '' : Number((newLiability.interestRate * 100).toFixed(1))}
+                onChange={e => setNewLiability(prev => ({ ...prev, interestRate: (e.target.value === '' ? 0 : parseFloat(e.target.value)) / 100 }))}
                 className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 outline-none"
               />
             </div>
@@ -106,8 +106,8 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
               <input
                 type="number"
                 step="0.1"
-                value={newLiability.minimumPayment === 0 ? 0 : Number(newLiability.minimumPayment.toFixed(1))}
-                onChange={e => setNewLiability(prev => ({ ...prev, minimumPayment: parseFloat(e.target.value) || 0 }))}
+                value={newLiability.minimumPayment === 0 ? '' : Number(newLiability.minimumPayment.toFixed(1))}
+                onChange={e => setNewLiability(prev => ({ ...prev, minimumPayment: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                 className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-rose-500 outline-none"
               />
             </div>
@@ -164,8 +164,8 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
                     <input
                       type="number"
                       step="0.1"
-                      value={liability.interestRate === 0 ? 0 : Number((liability.interestRate * 100).toFixed(1))}
-                      onChange={(e) => onUpdateLiability(liability.id, { interestRate: (parseFloat(e.target.value) || 0) / 100 })}
+                      value={liability.interestRate === 0 ? '' : Number((liability.interestRate * 100).toFixed(1))}
+                      onChange={(e) => onUpdateLiability(liability.id, { interestRate: (e.target.value === '' ? 0 : parseFloat(e.target.value)) / 100 })}
                       className="w-16 lg:w-20 text-xs lg:text-sm font-mono text-slate-600 dark:text-slate-300 text-right bg-transparent hover:bg-white dark:hover:bg-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-1 focus:ring-rose-500 rounded px-1 py-0.5 outline-none transition-all"
                     />%
                   </td>
@@ -173,8 +173,8 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
                     <input
                       type="number"
                       step="0.1"
-                      value={liability.minimumPayment === 0 ? 0 : Number(liability.minimumPayment.toFixed(1))}
-                      onChange={(e) => onUpdateLiability(liability.id, { minimumPayment: parseFloat(e.target.value) || 0 })}
+                      value={liability.minimumPayment === 0 ? '' : Number(liability.minimumPayment.toFixed(1))}
+                      onChange={(e) => onUpdateLiability(liability.id, { minimumPayment: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                       className="w-20 lg:w-24 text-xs lg:text-sm font-mono text-slate-600 dark:text-slate-300 text-right bg-transparent hover:bg-white dark:hover:bg-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-1 focus:ring-rose-500 rounded px-1 py-0.5 outline-none transition-all"
                     />
                   </td>

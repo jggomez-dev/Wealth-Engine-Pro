@@ -108,7 +108,8 @@ service cloud.firestore {
              request.resource.data.isEnabled is bool &&
              (!('qty' in request.resource.data) || request.resource.data.qty is number) &&
              (!('price' in request.resource.data) || request.resource.data.price is number) &&
-             (!('beta' in request.resource.data) || request.resource.data.beta is number);
+             (!('beta' in request.resource.data) || request.resource.data.beta is number) &&
+             (!('targetAllocation' in request.resource.data) || request.resource.data.targetAllocation is number);
     }
 
     function isValidLiability(userId) {

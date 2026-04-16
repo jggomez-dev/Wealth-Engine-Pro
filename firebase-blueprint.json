@@ -21,7 +21,8 @@
             "taxRate": { "type": "number" },
             "marketCrash": { "type": "number" },
             "careerAdjustment": { "type": "number" },
-            "aggressiveness": { "type": "number" }
+            "aggressiveness": { "type": "number" },
+            "rebalanceThreshold": { "type": "number" }
           }
         }
       },
@@ -42,6 +43,7 @@
         "beta": { "type": "number" },
         "total": { "type": "number" },
         "isEnabled": { "type": "boolean" },
+        "targetAllocation": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

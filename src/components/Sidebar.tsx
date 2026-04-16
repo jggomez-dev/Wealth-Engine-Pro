@@ -149,6 +149,16 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
           />
           <p className="text-[10px] text-slate-400 italic">{t('careerAdjustmentDesc')}</p>
 
+          <ControlGroup
+            label={t('rebalanceThreshold')}
+            value={params.rebalanceThreshold}
+            min={1}
+            max={20}
+            step={0.5}
+            unit="%"
+            onChange={(v) => handleChange('rebalanceThreshold', v)}
+          />
+
           <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4">
               {t('categoryExclusion')}
@@ -207,13 +217,14 @@ interface ControlGroupProps {
   onChange: (value: number) => void;
 }
 
-function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlGroupProps) {
+function ControlGroup({ label, value = 0, min, max, step, unit, onChange }: ControlGroupProps) {
+  const displayValue = value ?? 0;
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</label>
         <span className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">
-          {unit === '$' ? `$${value.toLocaleString()}` : `${unit === '%' ? value.toFixed(1).replace(/\.0$/, '') : value}${unit}`}
+          {unit === '$' ? `$${displayValue.toLocaleString()}` : `${unit === '%' ? displayValue.toFixed(1).replace(/\.0$/, '') : displayValue}${unit}`}
         </span>
       </div>
       <input
@@ -221,7 +232,7 @@ function ControlGroup({ label, value, min, max, step, unit, onChange }: ControlG
         min={min}
         max={max}
         step={step}
-        value={value}
+        value={displayValue}
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-500"
       />

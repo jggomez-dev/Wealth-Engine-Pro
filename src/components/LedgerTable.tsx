@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Asset, AssetType, TaxStatus } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X, Search, Loader2, Edit2 } from 'lucide-react';
 import { useLanguage } from '../lib/LanguageContext';
 
 interface LedgerTableProps {
@@ -16,6 +16,10 @@ interface LedgerTableProps {
 export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsset, onDeleteAsset }: LedgerTableProps) {
   const { t } = useLanguage();
   const [isAdding, setIsAdding] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<string | null>(null);
+  const [editAccountName, setEditAccountName] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState<string | null>(null);
   const [newAsset, setNewAsset] = useState<Omit<Asset, 'id'>>({
     account: '',
     ticker: '',
@@ -26,6 +30,32 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
     total: 0,
     isEnabled: true
   });
+
+  const accounts = React.useMemo(() => {
+    return Array.from(new Set(assets.map(a => a.account))).sort();
+  }, [assets]);
+
+  const lookupTicker = async (ticker: string) => {
+    if (!ticker || ticker === 'CASH') return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`/api/ticker-info?symbol=${encodeURIComponent(ticker)}`);
+      if (res.ok) {
+        const info = await res.json();
+        setNewAsset(prev => ({
+          ...prev,
+          type: info.type as AssetType,
+          price: info.price || 0,
+          // If it's a stock/etf, we should ensure it's not treated as pure cash
+          qty: prev.qty || 1 
+        }));
+      }
+    } catch (e) {
+      console.error("Ticker lookup failed", e);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const groupedAssets = React.useMemo(() => {
     const groups: Record<string, Asset[]> = {};
@@ -38,7 +68,14 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
 
   const handleAdd = () => {
     if (!newAsset.account || !newAsset.ticker) return;
-    onAddAsset(newAsset);
+    
+    // Ensure total is calculated before passing to onAddAsset
+    const assetToAdd = { ...newAsset };
+    if (assetToAdd.qty && assetToAdd.price && !assetToAdd.total) {
+      assetToAdd.total = assetToAdd.qty * assetToAdd.price;
+    }
+    
+    onAddAsset(assetToAdd);
     setIsAdding(false);
     setNewAsset({
       account: '',
@@ -77,21 +114,37 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('account')}</label>
               <input
                 type="text"
+                list="account-options"
                 placeholder="e.g. Brokerage"
                 value={newAsset.account}
                 onChange={e => setNewAsset(prev => ({ ...prev, account: e.target.value }))}
                 className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
               />
+              <datalist id="account-options">
+                {accounts.map(acc => (
+                  <option key={acc} value={acc} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('ticker')}</label>
-              <input
-                type="text"
-                placeholder="e.g. VTI"
-                value={newAsset.ticker}
-                onChange={e => setNewAsset(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
-                className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="e.g. VTI"
+                  value={newAsset.ticker}
+                  onChange={e => setNewAsset(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                  onBlur={e => lookupTicker(e.target.value)}
+                  className="w-full text-xs p-2 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {isSearching ? (
+                    <Loader2 className="w-3 h-3 text-indigo-500 animate-spin" />
+                  ) : (
+                    <Search className="w-3 h-3 text-slate-400" />
+                  )}
+                </div>
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('type')}</label>
@@ -102,6 +155,9 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
               >
                 <option value="Domestic Stock">{t('domesticStock')}</option>
                 <option value="International Stock">{t('internationalStock')}</option>
+                <option value="Bonds">Bonds</option>
+                <option value="Crypto">Crypto</option>
+                <option value="Gold">Gold</option>
                 <option value="Cash">{t('cash')}</option>
                 <option value="Private">{t('private')}</option>
                 <option value="Real Estate">{t('realEstate')}</option>
@@ -134,19 +190,28 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
             )}
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{t('qty')}/{t('total')}</label>
-              <input
-                type="number"
-                value={newAsset.qty || newAsset.total}
-                onChange={e => {
-                  const val = parseFloat(e.target.value) || 0;
-                  if (newAsset.type === 'Cash' || newAsset.type === 'Real Estate' || newAsset.type === 'Private') {
-                    setNewAsset(prev => ({ ...prev, total: val, qty: 0 }));
-                  } else {
-                    setNewAsset(prev => ({ ...prev, qty: val, total: 0 }));
-                  }
-                }}
-                className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
+              <div className="relative flex items-center">
+                {(newAsset.type === 'Cash' || newAsset.type === 'Real Estate' || newAsset.type === 'Private') && (
+                  <span className="absolute left-3 text-xs font-mono font-bold text-slate-900 dark:text-slate-100">{currency === 'USD' ? '$' : '€'}</span>
+                )}
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newAsset.qty || newAsset.total || ''}
+                  onChange={e => {
+                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                    if (newAsset.type === 'Cash' || newAsset.type === 'Real Estate' || newAsset.type === 'Private') {
+                      setNewAsset(prev => ({ ...prev, total: val, qty: 0 }));
+                    } else {
+                      setNewAsset(prev => ({ ...prev, qty: val, total: 0 }));
+                    }
+                  }}
+                  className={cn(
+                    "w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none",
+                    (newAsset.type === 'Cash' || newAsset.type === 'Real Estate' || newAsset.type === 'Private') && "pl-6"
+                  )}
+                />
+              </div>
             </div>
             <div className="flex gap-2">
               <button
@@ -188,21 +253,76 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                 <React.Fragment key={account}>
                   <tr className="bg-slate-50/30 dark:bg-slate-800/30">
                     <td colSpan={7} className="px-6 py-2 bg-indigo-50/30 dark:bg-indigo-900/10">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={allEnabled}
-                          ref={el => {
-                            if (el) el.indeterminate = someEnabled && !allEnabled;
-                          }}
-                          onChange={(e) => {
-                            accountAssets.forEach(a => onUpdateAsset(a.id, { isEnabled: e.target.checked }));
-                          }}
-                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 dark:text-indigo-500 focus:ring-indigo-500 cursor-pointer"
-                        />
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                          {account}
-                        </span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={allEnabled}
+                            ref={el => {
+                              if (el) el.indeterminate = someEnabled && !allEnabled;
+                            }}
+                            onChange={(e) => {
+                              accountAssets.forEach(a => onUpdateAsset(a.id, { isEnabled: e.target.checked }));
+                            }}
+                            className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 dark:text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          {editingAccount === account ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={editAccountName}
+                                onChange={e => setEditAccountName(e.target.value)}
+                                className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-indigo-500"
+                                autoFocus
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    if (editAccountName.trim() && editAccountName !== account) {
+                                      accountAssets.forEach(a => onUpdateAsset(a.id, { account: editAccountName.trim() }));
+                                    }
+                                    setEditingAccount(null);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingAccount(null);
+                                  }
+                                }}
+                              />
+                              <button onClick={() => {
+                                if (editAccountName.trim() && editAccountName !== account) {
+                                  accountAssets.forEach(a => onUpdateAsset(a.id, { account: editAccountName.trim() }));
+                                }
+                                setEditingAccount(null);
+                              }} className="text-xs font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Save</button>
+                              <button onClick={() => setEditingAccount(null)} className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">Cancel</button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                              {account}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {!editingAccount && (
+                          <div className="flex items-center gap-2">
+                            {deletingAccount === account ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600 dark:text-rose-400">Delete all assets?</span>
+                                <button onClick={() => {
+                                  accountAssets.forEach(a => onDeleteAsset(a.id));
+                                  setDeletingAccount(null);
+                                }} className="text-[10px] font-bold uppercase tracking-widest bg-rose-600 text-white px-2 py-1 rounded hover:bg-rose-700 transition-colors">Confirm</button>
+                                <button onClick={() => setDeletingAccount(null)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">Cancel</button>
+                              </div>
+                            ) : (
+                              <>
+                                <button onClick={() => { setEditingAccount(account); setEditAccountName(account); }} className="p-1 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded transition-colors" title="Edit Account Name">
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => setDeletingAccount(account)} className="p-1 text-rose-400 hover:text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded transition-colors" title="Delete Account">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -211,7 +331,10 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                                      asset.type === 'International Stock' ? t('internationalStock') :
                                      asset.type === 'Cash' ? t('cash') :
                                      asset.type === 'Private' ? t('private') :
-                                     asset.type === 'Real Estate' ? t('realEstate') : asset.type;
+                                     asset.type === 'Real Estate' ? t('realEstate') : 
+                                     asset.type === 'Crypto' ? 'Crypto' :
+                                     asset.type === 'Gold' ? 'Gold' :
+                                     asset.type === 'Bonds' ? 'Bonds' : asset.type;
 
                     return (
                       <tr key={asset.id} className={cn(
@@ -263,11 +386,12 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                         </div>
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-right">
-                        {asset.qty > 0 ? (
+                        {asset.qty > 0 || asset.ticker !== 'CASH' ? (
                           <input
                             type="number"
-                            value={asset.qty}
-                            onChange={(e) => onUpdateAsset(asset.id, { qty: parseFloat(e.target.value) || 0 })}
+                            step="0.01"
+                            value={asset.qty || ''}
+                            onChange={(e) => onUpdateAsset(asset.id, { qty: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                             className="w-16 lg:w-24 text-xs lg:text-sm font-mono text-slate-600 dark:text-slate-300 text-right bg-transparent hover:bg-white dark:hover:bg-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 outline-none transition-all"
                           />
                         ) : (
@@ -279,12 +403,16 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                       </td>
                       <td className="px-3 lg:px-6 py-3 lg:py-4 text-right">
                         {asset.qty === 0 ? (
-                          <input
-                            type="number"
-                            value={asset.total}
-                            onChange={(e) => onUpdateAsset(asset.id, { total: parseFloat(e.target.value) || 0 })}
-                            className="w-24 lg:w-32 text-xs lg:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 text-right bg-transparent hover:bg-white dark:hover:bg-slate-700 focus:bg-white dark:focus:bg-slate-700 focus:ring-1 focus:ring-indigo-500 rounded px-1 py-0.5 outline-none transition-all"
-                          />
+                          <div className="relative inline-block w-24 lg:w-32 bg-transparent hover:bg-white dark:hover:bg-slate-700 focus-within:bg-white dark:focus-within:bg-slate-700 focus-within:ring-1 focus-within:ring-indigo-500 rounded transition-all">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs lg:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 pointer-events-none">{currency === 'USD' ? '$' : '€'}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={asset.total || ''}
+                              onChange={(e) => onUpdateAsset(asset.id, { total: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                              className="w-full text-xs lg:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 text-right bg-transparent outline-none pl-6 pr-2 py-0.5 appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            />
+                          </div>
                         ) : (
                           <span className="text-xs lg:text-sm font-mono font-bold text-slate-900 dark:text-slate-100 pr-1">
                             {formatCurrency(asset.total, currency)}

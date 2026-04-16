@@ -67,6 +67,18 @@ async function startServer() {
     return FALLBACK[symbol] || 100.0;
   }
 
+  function normalizeTicker(symbol: string): string {
+    let normalized = symbol.toUpperCase().trim();
+    // Handle common dual-class shares like Berkshire Hathaway and Brown-Forman
+    if (normalized === 'BRKB' || normalized === 'BRK.B' || normalized === 'BRK B') return 'BRK-B';
+    if (normalized === 'BRKA' || normalized === 'BRK.A' || normalized === 'BRK A') return 'BRK-A';
+    if (normalized === 'BFB' || normalized === 'BF.B' || normalized === 'BF B') return 'BF-B';
+    if (normalized === 'BFA' || normalized === 'BF.A' || normalized === 'BF A') return 'BF-A';
+    
+    // General fallback: replace dots and spaces with hyphens for Yahoo Finance compatibility
+    return normalized.replace(/[\.\s]/g, '-');
+  }
+
   // Request logger
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -85,7 +97,7 @@ async function startServer() {
     }
 
     try {
-      const tickerList = Array.from(new Set(tickers.split(',').map(t => t.trim().toUpperCase())));
+      const tickerList = Array.from(new Set(tickers.split(',').map(t => normalizeTicker(t))));
       console.log(`Fetching unique prices for: ${tickerList.join(', ')}`);
       
       const results: { symbol: string; price: number | null }[] = [];
@@ -175,6 +187,66 @@ async function startServer() {
     } catch (error) {
       console.error("Failed to fetch prices:", error);
       res.status(500).json({ error: "Failed to fetch prices" });
+    }
+  });
+
+  app.get("/api/ticker-info", async (req, res) => {
+    const rawSymbol = (req.query.symbol as string)?.toUpperCase();
+    if (!rawSymbol) return res.status(400).json({ error: "Symbol is required" });
+
+    const symbol = normalizeTicker(rawSymbol);
+
+    try {
+      console.log(`[${new Date().toISOString()}] Fetching info for: ${symbol}`);
+      const response = await nodeFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}`);
+      if (response.ok) {
+        const data: any = await response.json();
+        const meta = data?.chart?.result?.[0]?.meta;
+        if (meta) {
+          // Identify type based on instrumentType or other fields
+          let type: string = 'Domestic Stock';
+          const instrumentType = meta.instrumentType;
+          
+          if (instrumentType === 'CRYPTOCURRENCY') {
+            type = 'Crypto';
+          } else if (symbol === 'GLD' || symbol === 'IAU' || symbol === 'SGOL' || symbol === 'OUNZ' || symbol === 'BAR') {
+            type = 'Gold';
+          } else if (symbol === 'BND' || symbol === 'AGG' || symbol === 'TLT' || symbol === 'IEF' || symbol === 'SHY' || symbol === 'LQD' || symbol === 'HYG' || symbol === 'VCIT' || symbol === 'VCSH' || symbol === 'BNDX') {
+            type = 'Bonds';
+          } else if (instrumentType === 'MUTUALFUND') {
+            // Very basic heuristic: if it has 'int' or 'global' in name, maybe international
+            const name = (meta.longName || meta.shortName || '').toLowerCase();
+            if (name.includes('int') || name.includes('global') || name.includes('emerging')) {
+              type = 'International Stock';
+            } else if (name.includes('bond')) {
+              type = 'Bonds';
+            } else {
+              type = 'Domestic Stock';
+            }
+          } else if (instrumentType === 'ETF') {
+            const name = (meta.longName || meta.shortName || '').toLowerCase();
+            if (name.includes('int') || name.includes('global') || name.includes('emerging') || name.includes('ex-us')) {
+              type = 'International Stock';
+            } else if (name.includes('bond') || name.includes('treasury')) {
+              type = 'Bonds';
+            } else {
+              type = 'Domestic Stock';
+            }
+          }
+          
+          res.json({
+            symbol,
+            name: meta.longName || meta.shortName || symbol,
+            price: meta.regularMarketPrice || meta.previousClose || null,
+            type: type
+          });
+          return;
+        }
+      }
+      res.status(404).json({ error: "Ticker not found" });
+    } catch (error) {
+      console.error("Failed to fetch ticker info:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 

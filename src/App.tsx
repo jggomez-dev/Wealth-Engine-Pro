@@ -15,8 +15,9 @@ import TaxBreakdownChart from './components/TaxBreakdownChart';
 import { HealthcareCalculator } from './components/HealthcareCalculator';
 import SabbaticalCalculator from './components/SabbaticalCalculator';
 import GuardrailsCalculator from './components/GuardrailsCalculator';
+import PortfolioStrategy from './components/PortfolioStrategy';
 import RealEstateCalculator, { RealEstatePropertyData, DEFAULT_PROPERTY } from './components/RealEstateCalculator';
-import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home, ShieldAlert } from 'lucide-react';
+import { Wallet, Timer, TrendingUp, AlertCircle, CheckCircle2, Info, Target, Menu, X as CloseIcon, Languages, BrainCircuit, Send, LogIn, LogOut, Activity, Briefcase, Home, ShieldAlert, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useLanguage } from './lib/LanguageContext';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -53,7 +54,7 @@ export default function App() {
   ]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate' | 'guardrails'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'healthcare' | 'sabbatical' | 'realEstate' | 'guardrails' | 'portfolioStrategy'>('dashboard');
   const [params, setParams] = useState<SimulationParams>({
     monthlySpend: 5000,
     monthlySavings: 2000,
@@ -67,6 +68,17 @@ export default function App() {
     marketCrash: 0,
     careerAdjustment: 0,
     aggressiveness: 1, // Default to Moderate
+    rebalanceThreshold: 5, // Default to 5%
+    portfolioTargets: {
+      'Domestic Stock': 50,
+      'International Stock': 20,
+      'Bonds': 10,
+      'Real Estate': 10,
+      'Cash': 5,
+      'Crypto': 5,
+      'Gold': 0,
+      'Private': 0
+    }
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -197,7 +209,13 @@ export default function App() {
       // Listen to User Profile (Settings)
       const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
         if (docSnap.exists() && docSnap.data().settings) {
-          setParams(docSnap.data().settings);
+          const settings = docSnap.data().settings;
+          setParams(prev => ({
+            ...prev,
+            ...settings,
+            // Ensure new fields have defaults if missing from old saved data
+            rebalanceThreshold: settings.rebalanceThreshold ?? 5
+          }));
         }
       }, (error) => {
         handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
@@ -334,6 +352,12 @@ export default function App() {
   const addAsset = (asset: Omit<Asset, 'id'>) => {
     const id = Math.random().toString(36).substr(2, 9);
     const newAsset: Asset = { ...asset, id };
+    
+    // Ensure total is calculated if qty and price are present
+    if (newAsset.qty && newAsset.price && !newAsset.total) {
+      newAsset.total = newAsset.qty * newAsset.price;
+    }
+    
     setAssets(prev => [...prev, newAsset]);
     if (user) {
       setDoc(doc(db, 'users', user.uid, 'assets', id), { ...newAsset, userId: user.uid }).catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${user.uid}/assets/${id}`));
@@ -579,6 +603,28 @@ export default function App() {
     [totalWealth, params.retirementYears, weightedExpectedReturn, params.volatility, params.monthlySavings, params.inflationRate, params.marketCrash, params.careerAdjustment]
   );
 
+  const needsRebalance = useMemo(() => {
+    if (totalAssets === 0 || !params.portfolioTargets) return false;
+    
+    // Group assets by type using netAssetsForCharts to reflect real estate after mortgages
+    const totalsByType: Record<string, number> = {};
+    netAssetsForCharts.forEach(asset => {
+      totalsByType[asset.type] = (totalsByType[asset.type] || 0) + asset.total;
+    });
+
+    const strategyCategories = Object.keys(params.portfolioTargets);
+    const strategyTotalValue = strategyCategories.reduce((sum, type) => sum + (totalsByType[type] || 0), 0);
+
+    if (strategyTotalValue === 0) return false;
+
+    return Object.entries(params.portfolioTargets).some(([type, targetValue]) => {
+      if (targetValue === undefined || targetValue === null) return false;
+      const currentTotal = totalsByType[type] || 0;
+      const currentAlloc = (currentTotal / strategyTotalValue) * 100;
+      return Math.abs(currentAlloc - Number(targetValue)) > params.rebalanceThreshold;
+    });
+  }, [netAssetsForCharts, totalAssets, params.portfolioTargets, params.rebalanceThreshold]);
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden relative">
       {/* Desktop Sidebar (Permanent) */}
@@ -753,6 +799,20 @@ export default function App() {
               </div>
             </button>
             <button
+              onClick={() => setActiveTab('portfolioStrategy')}
+              className={cn(
+                "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
+                activeTab === 'portfolioStrategy' 
+                  ? "border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400" 
+                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 hover:border-slate-300"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                {t('portfolioStrategy')}
+              </div>
+            </button>
+            <button
               onClick={() => setActiveTab('guardrails')}
               className={cn(
                 "px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
@@ -777,6 +837,12 @@ export default function App() {
               expectedReturn={params.expectedReturn}
               realEstateReturn={params.realEstateReturn}
               monthlySpend={params.monthlySpend}
+            />
+          ) : activeTab === 'portfolioStrategy' ? (
+            <PortfolioStrategy 
+              assets={netAssetsForCharts}
+              params={params}
+              setParams={updateParams}
             />
           ) : activeTab === 'guardrails' ? (
             <GuardrailsCalculator 
@@ -816,6 +882,31 @@ export default function App() {
             />
           ) : (
             <>
+              {needsRebalance && (
+                <div 
+                  onClick={() => setActiveTab('portfolioStrategy')}
+                  className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-amber-100/50 transition-colors group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-amber-100 dark:bg-amber-800 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">
+                        {t('rebalanceNeeded')}
+                      </h3>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                        Your portfolio has drifted beyond your {params.rebalanceThreshold}% threshold.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-400 group-hover:translate-x-1 transition-transform">
+                    {t('portfolioStrategy')}
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+              )}
+
               {/* Top Metrics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
             <MetricCard
@@ -857,8 +948,8 @@ export default function App() {
           </div>
 
           {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-6">
-            <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6 min-w-0">
               <PortfolioChart assets={netAssetsForCharts} />
               <AggressivenessCard 
                 aggressiveness={params.aggressiveness}
@@ -867,7 +958,7 @@ export default function App() {
                 currency={currency}
               />
             </div>
-            <div className="lg:col-span-1 2xl:col-span-1 space-y-6 min-w-0">
+            <div className="space-y-6 min-w-0">
               <TaxBreakdownChart assets={netAssetsForCharts} />
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
@@ -914,7 +1005,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="lg:col-span-2 2xl:col-span-2 min-w-0">
+            <div className="lg:col-span-2 min-w-0">
               <ProjectionChart paths={mcResults.paths} percentiles={mcResults.percentiles} />
             </div>
           </div>

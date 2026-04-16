@@ -1,4 +1,4 @@
-export type AssetType = 'Domestic Stock' | 'International Stock' | 'Cash' | 'Private' | 'Real Estate';
+export type AssetType = 'Domestic Stock' | 'International Stock' | 'Cash' | 'Private' | 'Real Estate' | 'Crypto' | 'Gold' | 'Bonds';
 export type TaxStatus = 'Pre-Tax' | 'Post-Tax' | 'Locked' | 'Roth';
 export type LiabilityType = 'Mortgage' | 'Student Loan' | 'Credit Card' | 'Auto Loan' | 'Other';
 
@@ -76,6 +76,8 @@ export interface SimulationParams {
   marketCrash: number;
   careerAdjustment: number;
   aggressiveness: number; // 0: Conservative, 1: Moderate, 2: Aggressive, 3: Super Aggressive
+  rebalanceThreshold: number; // Percentage drift to trigger alert (e.g., 5)
+  portfolioTargets?: Record<string, number>; // Target percentage for each AssetType
 }
 
 export interface SimulationPath {
