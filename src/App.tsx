@@ -6,7 +6,6 @@ import { formatCurrency, cn } from './lib/utils';
 import Sidebar from './components/Sidebar';
 import MetricCard from './components/MetricCard';
 import PortfolioChart from './components/PortfolioChart';
-import AggressivenessCard from './components/AggressivenessCard';
 import ProjectionChart from './components/ProjectionChart';
 import LedgerTable from './components/LedgerTable';
 import LiabilitiesTable from './components/LiabilitiesTable';
