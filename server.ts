@@ -127,12 +127,16 @@ async function startServer() {
             console.log(`[${new Date().toISOString()}] Requesting price for mutual fund: ${symbol}`);
             try {
               const headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
               };
               
-              // Try different Yahoo Finance endpoints
+              // Mutual funds often have weird daily reporting schedules (end of trading day only).
+              // We try a few different yahoo finance APIs to find the latest valid price.
               const endpoints = [
-                `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`,
+                `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
+                `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
                 `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
               ];
               
@@ -142,12 +146,26 @@ async function startServer() {
                   const data: any = await response.json();
                   if (url.includes('chart')) {
                     const result = data?.chart?.result?.[0];
-                    price = result?.meta?.regularMarketPrice || result?.meta?.previousClose;
+                    if (result && result.meta) {
+                        price = result.meta.regularMarketPrice || result.meta.previousClose;
+                        
+                        // If meta price is missing or zero, try to extract from the most recent closing price array
+                        if ((!price || price === 0) && result.indicators?.quote?.[0]?.close) {
+                            const closePrices = result.indicators.quote[0].close;
+                            // Find the last non-null value in the array
+                            for (let i = closePrices.length - 1; i >= 0; i--) {
+                                if (closePrices[i] !== null && !isNaN(closePrices[i])) {
+                                    price = closePrices[i];
+                                    break;
+                                }
+                            }
+                        }
+                    }
                   } else {
                     const result = data?.quoteResponse?.result?.[0];
                     price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask;
                   }
-                  if (price) break;
+                  if (price && price > 0) break;
                 } else {
                   console.warn(`Yahoo endpoint failed (${response.status}): ${url}`);
                 }
