@@ -352,23 +352,40 @@ export default function PortfolioStrategy({
                   <div className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-bold text-slate-500">ACTIVE MIX</div>
                 </div>
                 <div className="grid grid-cols-2 gap-6 mb-8">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Expected Return</span>
+                  <div className="group relative">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1 cursor-help">
+                      Expected Return
+                      <Info className="w-3 h-3" />
+                    </span>
                     <span className="text-2xl font-bold text-slate-900 dark:text-white">{(currentMetrics.mu * 100).toFixed(2)}%</span>
+                    <div className="absolute top-full left-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Calculated as the weighted average of expected returns based on your current asset mix.
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Portfolio Volatility</span>
+                  <div className="group relative">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1 cursor-help">
+                      Portfolio Volatility
+                      <Info className="w-3 h-3" />
+                    </span>
                     <span className="text-2xl font-bold text-slate-900 dark:text-white">{(currentMetrics.sigma * 100).toFixed(2)}%</span>
+                    <div className="absolute top-full left-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      The weighted blend of historical standard deviations for your current holdings.
+                    </div>
                   </div>
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-3">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500 italic">Sharpe Ratio (Estimated)</span>
+                  <div className="flex justify-between text-xs group relative">
+                    <span className="text-slate-500 italic flex items-center gap-1 cursor-help border-b border-slate-300 dark:border-slate-600 border-dotted">
+                      Sharpe Ratio (Estimated)
+                    </span>
                     <span className="font-bold text-slate-700 dark:text-slate-300">{((currentMetrics.mu - 0.02) / currentMetrics.sigma).toFixed(2)}</span>
+                    <div className="absolute bottom-full left-0 mb-2 w-56 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Measures risk-adjusted return (using a 2% risk-free rate). A higher number indicates better performance for the level of volatility you take on.
+                    </div>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500 italic">Expected Efficiency</span>
-                    <span className="font-bold text-slate-700 dark:text-slate-300">Moderate</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Baseline</span>
                   </div>
                 </div>
               </div>
@@ -380,50 +397,89 @@ export default function PortfolioStrategy({
                   <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 rounded text-[10px] font-bold text-indigo-600">STRATEGY</div>
                 </div>
                 <div className="grid grid-cols-2 gap-6 mb-8">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Expected Return</span>
+                  <div className="group relative">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1 cursor-help">
+                      Expected Return
+                      <Info className="w-3 h-3" />
+                    </span>
                     <span className={cn(
                       "text-2xl font-bold",
                       targetMetrics.mu >= currentMetrics.mu ? "text-emerald-600" : "text-rose-600"
                     )}>
                       {(targetMetrics.mu * 100).toFixed(2)}%
                     </span>
+                    <div className="absolute top-full left-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Calculated as the weighted average of expected returns based on your ideal target allocation.
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Portfolio Volatility</span>
+                  <div className="group relative">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1 mb-1 cursor-help">
+                      Portfolio Volatility
+                      <Info className="w-3 h-3" />
+                    </span>
                     <span className={cn(
                       "text-2xl font-bold",
                       targetMetrics.sigma <= currentMetrics.sigma ? "text-emerald-600" : "text-amber-600"
                     )}>
                       {(targetMetrics.sigma * 100).toFixed(2)}%
                     </span>
+                    <div className="absolute top-full left-0 mt-2 w-48 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      The weighted blend of historical standard deviations for your target holdings.
+                    </div>
                   </div>
                 </div>
                 <div className="p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl space-y-3">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-indigo-600/70 italic">Sharpe Ratio (Estimated)</span>
+                  <div className="flex justify-between text-xs group relative">
+                    <span className="text-indigo-600/70 italic flex items-center gap-1 cursor-help border-b border-indigo-300 dark:border-indigo-600 border-dotted">
+                      Sharpe Ratio (Estimated)
+                    </span>
                     <span className="font-bold text-indigo-900 dark:text-indigo-100">{((targetMetrics.mu - 0.02) / targetMetrics.sigma).toFixed(2)}</span>
+                    <div className="absolute bottom-full left-0 mb-2 w-56 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Measures risk-adjusted return (using a 2% risk-free rate) of your target strategy. Higher is generally better.
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-indigo-600/70 italic">Efficiency Delta</span>
+                  <div className="flex justify-between text-xs group relative">
+                    <span className="text-indigo-600/70 italic flex items-center gap-1 cursor-help border-b border-indigo-300 dark:border-indigo-600 border-dotted">
+                      Efficiency Delta
+                    </span>
                     <span className={cn(
                       "font-bold",
                       (targetMetrics.mu/targetMetrics.sigma) > (currentMetrics.mu/currentMetrics.sigma) ? "text-emerald-600" : "text-slate-600"
                     )}>
                       {(((targetMetrics.mu/targetMetrics.sigma) / (currentMetrics.mu/currentMetrics.sigma) - 1) * 100).toFixed(1)}% {((targetMetrics.mu/targetMetrics.sigma) > (currentMetrics.mu/currentMetrics.sigma)) ? 'Improvement' : 'Change'}
                     </span>
+                    <div className="absolute bottom-full right-0 mb-2 w-64 p-2 bg-slate-900 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      Compares the risk-to-reward ratio of your target allocation vs. your current allocation. A positive improvement implies you can potentially capture more return without taking strictly more risk.
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-8 p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800">
-              <div className="flex gap-4">
-                <Info className="w-6 h-6 text-indigo-600 shrink-0" />
-                <div className="text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">
-                  <p className="font-bold mb-1 italic text-indigo-700 dark:text-indigo-300">How this impacts your Monte Carlo Simulation:</p>
-                  By clicking "Simulate", you are injecting the weighted return and risk characteristics of that specific allocation into the main project engine. 
-                  The <strong>P50 (Median)</strong> outcome will shift based on the <em>Expected Return</em>, while the <strong>P10/P90 (range of outcomes)</strong> will widen or narrow based on the <em>Volatility</em>.
+            <div className="mt-8 space-y-4">
+              <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800">
+                <div className="flex gap-4">
+                  <Info className="w-6 h-6 text-indigo-600 shrink-0" />
+                  <div className="text-sm text-indigo-900 dark:text-indigo-200 leading-relaxed">
+                    <p className="font-bold mb-1 italic text-indigo-700 dark:text-indigo-300">How this impacts your Monte Carlo Simulation:</p>
+                    By clicking "Simulate", you are injecting the weighted return and risk characteristics of that specific allocation into the main project engine. 
+                    The <strong>P50 (Median)</strong> outcome will shift based on the <em>Expected Return</em>, while the <strong>P10/P90 (range of outcomes)</strong> will widen or narrow based on the <em>Volatility</em>.
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <h4 className="font-bold text-slate-800 dark:text-slate-100 mb-3 text-sm uppercase tracking-widest">How to Optimize Your Strategy</h4>
+                <div className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+                  <p>
+                    <strong>To Improve Sharpe Ratio & Efficiency:</strong> The goal is to maximize return for every unit of risk. If your Target Efficiency Delta is negative, your target portfolio is actually <em>less efficient</em> than your current mix. To fix this, you must diversify! Adding non-correlated assets (like Gold or Bonds) to a highly volatile portfolio (like Stocks or Crypto) often improves the Sharpe Ratio.
+                  </p>
+                  <p>
+                    <strong>To Increase Expected Return:</strong> Shift your target percentages closer to high-growth asset classes (e.g., Domestic Stock, Private Equity, Crypto). Note that doing this almost always increases <em>Portfolio Volatility</em>, widening your range of best and worst-case scenarios.
+                  </p>
+                  <p>
+                    <strong>To Lower Volatility (Risk):</strong> Increase your target allocations to stable assets like Cash or Bonds. This narrows your range of outcomes and protects against severe market crashes, but typically lowers your Expected Return.
+                  </p>
                 </div>
               </div>
             </div>

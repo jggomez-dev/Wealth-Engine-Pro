@@ -558,6 +558,60 @@ export default function App() {
   const strategyTotalValue = useMemo(() => portfolioData.reduce((sum, a) => sum + a.currentTotal, 0), [portfolioData]);
   const outOfWhackCount = useMemo(() => portfolioData.filter(d => d.isOutofWhack && d.targetAllocation > 0).length, [portfolioData]);
 
+  const dynamicAssetMetrics = useMemo(() => {
+    let reReturn = ASSET_CLASS_METRICS['Real Estate'].mu;
+    
+    if (realEstateProperties.length > 0) {
+      let totalInvested = 0;
+      let totalWeightedReturn = 0;
+
+      realEstateProperties.forEach(p => {
+        const {
+          purchasePrice, downPaymentPercent, closingCosts, rehabCosts,
+          grossRent, otherIncome, propertyTaxes, insurance, hoa,
+          repairsPercent, vacancyPercent, capexPercent, managementPercent,
+          interestRate, loanTerm, currentLoanBalanceOverride,
+          appreciationRate
+        } = p;
+
+        const totalOutOfPocket = (purchasePrice * (downPaymentPercent / 100)) + closingCosts + rehabCosts;
+        
+        const monthlyIncome = grossRent + otherIncome;
+        const monthlyTaxes = propertyTaxes / 12;
+        const monthlyInsurance = insurance / 12;
+        const monthlyExpenses = monthlyTaxes + monthlyInsurance + hoa + (monthlyIncome * (repairsPercent + vacancyPercent + capexPercent + managementPercent) / 100);
+        const monthlyNOI = monthlyIncome - monthlyExpenses;
+        
+        const loanAmount = (currentLoanBalanceOverride && currentLoanBalanceOverride > 0) 
+            ? currentLoanBalanceOverride 
+            : purchasePrice * (1 - downPaymentPercent / 100);
+            
+        let monthlyMortgage = 0;
+        if (loanAmount > 0 && interestRate > 0) {
+          const r = (interestRate / 100) / 12;
+          const totalPayments = loanTerm * 12;
+          monthlyMortgage = (loanAmount * r * Math.pow(1 + r, totalPayments)) / (Math.pow(1 + r, totalPayments) - 1);
+        }
+        
+        const annualCashFlow = (monthlyNOI - monthlyMortgage) * 12;
+        const cashOnCash = totalOutOfPocket > 0 ? (annualCashFlow / totalOutOfPocket) : 0;
+        const totalPropReturn = cashOnCash + (appreciationRate / 100);
+
+        totalInvested += totalOutOfPocket;
+        totalWeightedReturn += totalPropReturn * totalOutOfPocket;
+      });
+
+      if (totalInvested > 0) {
+        reReturn = totalWeightedReturn / totalInvested;
+      }
+    }
+
+    return {
+      ...ASSET_CLASS_METRICS,
+      'Real Estate': { mu: reReturn, sigma: ASSET_CLASS_METRICS['Real Estate'].sigma }
+    };
+  }, [realEstateProperties]);
+
   const currentAllocationMetrics = useMemo(() => {
     if (strategyTotalValue === 0) return { mu: 0.07, sigma: 0.15 };
     let weightedMu = 0;
@@ -565,13 +619,13 @@ export default function App() {
     
     portfolioData.forEach(p => {
       const weight = p.currentTotal / strategyTotalValue;
-      const metrics = ASSET_CLASS_METRICS[p.type];
+      const metrics = dynamicAssetMetrics[p.type as AssetType] || dynamicAssetMetrics['Domestic Stock'];
       weightedMu += weight * metrics.mu;
       weightedSigma += weight * metrics.sigma;
     });
     
     return { mu: weightedMu, sigma: weightedSigma };
-  }, [portfolioData, strategyTotalValue]);
+  }, [portfolioData, strategyTotalValue, dynamicAssetMetrics]);
 
   const targetAllocationMetrics = useMemo(() => {
     let weightedMu = 0;
@@ -579,13 +633,13 @@ export default function App() {
     
     portfolioData.forEach(p => {
       const weight = p.targetAllocation / 100;
-      const metrics = ASSET_CLASS_METRICS[p.type];
+      const metrics = dynamicAssetMetrics[p.type as AssetType] || dynamicAssetMetrics['Domestic Stock'];
       weightedMu += weight * metrics.mu;
       weightedSigma += weight * metrics.sigma;
     });
     
     return { mu: weightedMu, sigma: weightedSigma };
-  }, [portfolioData]);
+  }, [portfolioData, dynamicAssetMetrics]);
 
   const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
   const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
