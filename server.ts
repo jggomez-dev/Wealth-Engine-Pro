@@ -57,6 +57,23 @@ async function startServer() {
     return symbol.length === 5 && symbol.toUpperCase().endsWith('X');
   };
 
+  async function fetchGoogleFinanceMutualFund(symbol: string): Promise<number | null> {
+    try {
+      const url = `https://www.google.com/finance/quote/${symbol}:MUTF`;
+      const response = await nodeFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
+      if (response.ok) {
+        const html = await response.text();
+        const match = html.match(/data-last-price="([0-9\.]+)"/);
+        if (match && match[1]) {
+          return parseFloat(match[1]);
+        }
+      }
+    } catch (e) {
+      console.error(`Google Finance fetch failed for ${symbol}:`, e);
+    }
+    return null;
+  }
+
   function getMockPrice(symbol: string): number {
     const FALLBACK: Record<string, number> = { 
       VTIAX: 35.85, 
@@ -91,6 +108,7 @@ async function startServer() {
 
   app.get("/api/prices", async (req, res) => {
     const tickers = req.query.tickers as string;
+    const clearCache = req.query.clearCache === 'true';
     if (!tickers) {
       return res.status(400).json({ error: "Tickers are required" });
     }
@@ -98,6 +116,16 @@ async function startServer() {
     try {
       const tickerList = Array.from(new Set(tickers.split(',').map(t => normalizeTicker(t))));
       console.log(`Fetching unique prices for: ${tickerList.join(', ')}`);
+      
+      const db = getDb();
+      if (db && clearCache) {
+        console.log(`Clearing cache for: ${tickerList.join(', ')}`);
+        const batch = db.batch();
+        for (const symbol of tickerList) {
+          batch.delete(db.collection('prices').doc(symbol));
+        }
+        await batch.commit();
+      }
       
       const results: { symbol: string; price: number | null }[] = [];
       for (const symbol of tickerList) {
@@ -109,7 +137,8 @@ async function startServer() {
             const doc = await docRef.get();
             if (doc.exists) {
               const data = doc.data();
-              if (data && (Date.now() - new Date(data.updatedAt).getTime() < 86400000)) {
+              // Cache prices for 15 minutes (900000 ms) instead of 24 hours
+              if (data && (Date.now() - new Date(data.updatedAt).getTime() < 900000)) {
                 console.log(`[${new Date().toISOString()}] Returning Firestore price for: ${symbol}`);
                 results.push({ symbol, price: data.price });
                 continue;
@@ -123,8 +152,9 @@ async function startServer() {
         try {
           let price: number | null = null;
           
-          if (isMutualFund(symbol)) {
-            console.log(`[${new Date().toISOString()}] Requesting price for mutual fund: ${symbol}`);
+          // We try Yahoo Finance for all symbols (stocks, ETFs, mutual funds) since it doesn't require an API key
+          if (true) {
+            console.log(`[${new Date().toISOString()}] Requesting price for: ${symbol}`);
             try {
               const headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -132,7 +162,7 @@ async function startServer() {
                 'Accept-Language': 'en-US,en;q=0.9',
               };
               
-              // Mutual funds often have weird daily reporting schedules (end of trading day only).
+                // Mutual funds often have weird daily reporting schedules (end of trading day only).
               // We try a few different yahoo finance APIs to find the latest valid price.
               const endpoints = [
                 `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
@@ -163,18 +193,33 @@ async function startServer() {
                     }
                   } else {
                     const result = data?.quoteResponse?.result?.[0];
-                    price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask;
+                    // Also check for 'netAssetValue' which is often used for mutual funds instead of regularMarketPrice
+                    price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask || result?.netAssetValue;
                   }
                   if (price && price > 0) break;
                 } else {
-                  console.warn(`Yahoo endpoint failed (${response.status}): ${url}`);
+                  if (response.status !== 404 && response.status !== 401) {
+                    console.warn(`Yahoo endpoint failed (${response.status}): ${url}`);
+                  }
                 }
               }
-              console.log(`[${new Date().toISOString()}] Price response for mutual fund ${symbol}: ${price}`);
+              if (price && price !== 0) {
+                console.log(`[${new Date().toISOString()}] Price response for ${symbol}: ${price}`);
+              }
             } catch (err) {
-              console.error(`Mutual fund fetch failed for ${symbol}:`, err);
+              console.error(`Asset fetch failed for ${symbol}:`, err);
             }
-          } else if (FINNHUB_API_KEY) {
+          }
+
+          if ((!price || price === 0) && isMutualFund(symbol)) {
+            console.log(`[${new Date().toISOString()}] Requesting Google Finance for: ${symbol}`);
+            const gfPrice = await fetchGoogleFinanceMutualFund(symbol);
+            if (gfPrice) price = gfPrice;
+          }
+          
+          // Fallback to finnhub for remaining non-mutual funds if the key is available
+          // We DO NOT use Finnhub for Mutual Funds because it returns stale/inaccurate data
+          if ((!price || price === 0) && FINNHUB_API_KEY && !isMutualFund(symbol)) {
             // Delay each request by 1 second to stay under the Finnhub free tier limit
             await new Promise(resolve => setTimeout(resolve, 1000));
             
@@ -219,6 +264,10 @@ async function startServer() {
         return acc;
       }, {} as Record<string, number>);
 
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      res.set('Surrogate-Control', 'no-store');
       res.json(priceMap);
     } catch (error) {
       console.error("Failed to fetch prices:", error);

@@ -131,10 +131,10 @@ export default function GuardrailsCalculator({
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              Dynamic Spending Guardrails
+              {t('dynamicSpendingGuardrails')}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              See how flexible spending protects your retirement during market crashes.
+              {t('guardrailsExplanation')}
             </p>
           </div>
         </div>
@@ -179,13 +179,13 @@ export default function GuardrailsCalculator({
           
           <div className="text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/30 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
             {scenario === 'stress' && (
-              <p><strong>Stress Test:</strong> Simulates a severe "Sequence of Returns Risk" scenario. The market drops significantly in the first three years of retirement (-15%, -10%, -5%), followed by average returns, and a bull market much later. This shows how taking a temporary pay cut early on can save your portfolio from depleting to zero.</p>
+              <p><strong>{t('marketCrash')}:</strong> {t('stressTestDesc')}</p>
             )}
             {scenario === 'average' && (
-              <p><strong>Average Returns:</strong> Simulates a steady, predictable market where returns hit your expected average every single year. Notice how the guardrails rarely trigger because there is no extreme volatility.</p>
+              <p><strong>{t('averageReturns')}:</strong> {t('averageReturnsDesc')}</p>
             )}
             {scenario === 'bull' && (
-              <p><strong>Bull Market:</strong> Simulates a fantastic start to retirement (+15%, +10%, +5% in the first three years). This shows how the "Prosperity Rule" allows you to safely give yourself a raise and enjoy your wealth when the market is booming.</p>
+              <p><strong>{t('bullMarket')}:</strong> {t('bullMarketDesc')}</p>
             )}
           </div>
         </div>
@@ -194,8 +194,8 @@ export default function GuardrailsCalculator({
           {/* Card 1: The Basics */}
           <div className="space-y-6 p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
             <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">1. Starting Withdrawal Rate</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">What percentage of your portfolio will you spend in Year 1?</p>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">{t('startingWithdrawalRateTitle')}</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t('startingWithdrawalRateDesc')}</p>
             </div>
             
             <div className="space-y-4">
@@ -214,7 +214,7 @@ export default function GuardrailsCalculator({
                 </span>
               </div>
               <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                <span className="text-sm text-slate-600 dark:text-slate-400">Year 1 Spending:</span>
+                <span className="text-sm text-slate-600 dark:text-slate-400">{t('year1Spending')}</span>
                 <span className="text-lg font-bold text-slate-900 dark:text-white">
                   {formatCurrency(initialWealth * initialWithdrawalRate, currency)}
                 </span>
@@ -225,15 +225,15 @@ export default function GuardrailsCalculator({
           {/* Card 2: The Rules */}
           <div className="space-y-6 p-5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/30 dark:bg-amber-900/10">
             <div>
-              <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">2. The Guardrail Rules</h3>
-              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1">How much should you adjust your spending if the market moves?</p>
+              <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100">{t('guardrailRulesTitle')}</h3>
+              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1">{t('guardrailRulesDesc')}</p>
             </div>
 
             <div className="space-y-5">
               {/* Pay Cut */}
               <div>
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-slate-700 dark:text-slate-300">Rule 1: The Pay Cut (Preservation)</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{t('payCutRule')}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <input
@@ -247,14 +247,14 @@ export default function GuardrailsCalculator({
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  If market drops and withdrawal rate hits <strong className="text-rose-600">{(initialWithdrawalRate * (1 + upperGuardrail) * 100).toFixed(1)}%</strong>, take a pay cut.
+                  {t('ifMarketDrops')} <strong className="text-rose-600">{(initialWithdrawalRate * (1 + upperGuardrail) * 100).toFixed(1)}%</strong>, {t('takeAPayCut')}
                 </p>
               </div>
 
               {/* Raise */}
               <div>
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-slate-700 dark:text-slate-300">Rule 2: The Raise (Prosperity)</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{t('raiseRule')}</span>
                 </div>
                 <div className="flex items-center gap-4">
                   <input
@@ -268,14 +268,14 @@ export default function GuardrailsCalculator({
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  If market booms and withdrawal rate drops to <strong className="text-emerald-600">{(initialWithdrawalRate * (1 - lowerGuardrail) * 100).toFixed(1)}%</strong>, get a raise.
+                  {t('ifMarketBooms')} <strong className="text-emerald-600">{(initialWithdrawalRate * (1 - lowerGuardrail) * 100).toFixed(1)}%</strong>, {t('takeARaise')}
                 </p>
               </div>
 
               {/* Adjustment Amount */}
               <div className="pt-3 border-t border-amber-200/50 dark:border-amber-800/50">
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-slate-700 dark:text-slate-300">Pay Cut / Raise Amount</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">{t('adjustmentAmount')}</span>
                   <span className="font-bold text-amber-600 dark:text-amber-400">{(spendingAdjustment * 100).toFixed(0)}%</span>
                 </div>
                 <input
@@ -295,25 +295,25 @@ export default function GuardrailsCalculator({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <MetricCard
-          title="Final Portfolio (Static)"
+          title={t('finalPortfolioLimit') + ` (${t('staticStrategy')})`}
           value={formatCurrency(simulationData.finalStatic, currency)}
           icon={<DollarSign className="w-5 h-5 text-slate-500" />}
-          trend={{ value: simulationData.finalStatic === 0 ? 'Depleted' : 'Survived', isPositive: simulationData.finalStatic > 0 }}
+          trend={{ value: simulationData.finalStatic === 0 ? t('depleted') : t('survived'), isPositive: simulationData.finalStatic > 0 }}
         />
         <MetricCard
-          title="Final Portfolio (Dynamic)"
+          title={t('finalPortfolioLimit') + ` (${t('dynamicStrategy')})`}
           value={formatCurrency(simulationData.finalDynamic, currency)}
           icon={<ShieldAlert className="w-5 h-5 text-amber-500" />}
-          trend={{ value: simulationData.finalDynamic === 0 ? 'Depleted' : 'Survived', isPositive: simulationData.finalDynamic > 0 }}
+          trend={{ value: simulationData.finalDynamic === 0 ? t('depleted') : t('survived'), isPositive: simulationData.finalDynamic > 0 }}
         />
         <MetricCard
-          title="Total Spent (Dynamic)"
+          title={t('totalSpent') + ` (${t('dynamicStrategy')})`}
           value={formatCurrency(simulationData.totalDynamicSpent, currency)}
           icon={<TrendingUp className="w-5 h-5 text-emerald-500" />}
           trend={{ value: `vs ${formatCompactCurrency(simulationData.totalStaticSpent, currency)} Static`, isPositive: simulationData.totalDynamicSpent > simulationData.totalStaticSpent }}
         />
         <MetricCard
-          title="Guardrail Triggers"
+          title={t('timesTriggered')}
           value={`${simulationData.dynamicCuts} Cuts`}
           icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
           trend={{ value: `${simulationData.dynamicRaises} Raises`, isPositive: true }}
@@ -323,7 +323,7 @@ export default function GuardrailsCalculator({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-6">
-            Portfolio Value Over Time
+            {t('portfolioValueOverTime')}
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -331,7 +331,7 @@ export default function GuardrailsCalculator({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis 
                   dataKey="year" 
-                  tickFormatter={(val) => `Year ${val}`}
+                  tickFormatter={(val) => t('year').replace('{val}', val)}
                   stroke="#94a3b8" 
                   fontSize={12} 
                   tickMargin={10}
@@ -344,14 +344,14 @@ export default function GuardrailsCalculator({
                 />
                 <Tooltip 
                   formatter={(value: number) => formatCurrency(value, currency)}
-                  labelFormatter={(label) => `Year ${label}`}
+                  labelFormatter={(label) => t('year').replace('{val}', label)}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Legend />
                 <Line 
                   type="monotone" 
                   dataKey="staticPortfolio" 
-                  name="Static 4% Rule" 
+                  name={t('static4PercentRule')}
                   stroke="#94a3b8" 
                   strokeWidth={2} 
                   dot={false} 
@@ -360,7 +360,7 @@ export default function GuardrailsCalculator({
                 <Line 
                   type="monotone" 
                   dataKey="dynamicPortfolio" 
-                  name="Dynamic Guardrails" 
+                  name={t('dynamicGuardrailsName')}
                   stroke="#f59e0b" 
                   strokeWidth={3} 
                   dot={false} 
@@ -372,7 +372,7 @@ export default function GuardrailsCalculator({
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-6">
-            Annual Spending Over Time
+            {t('annualSpendingOverTime')}
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -380,7 +380,7 @@ export default function GuardrailsCalculator({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis 
                   dataKey="year" 
-                  tickFormatter={(val) => `Year ${val}`}
+                  tickFormatter={(val) => t('year').replace('{val}', val)}
                   stroke="#94a3b8" 
                   fontSize={12} 
                   tickMargin={10}
@@ -393,14 +393,14 @@ export default function GuardrailsCalculator({
                 />
                 <Tooltip 
                   formatter={(value: number) => formatCurrency(value, currency)}
-                  labelFormatter={(label) => `Year ${label}`}
+                  labelFormatter={(label) => t('year').replace('{val}', label)}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Legend />
                 <Line 
                   type="stepAfter" 
                   dataKey="staticSpending" 
-                  name="Static Spending" 
+                  name={t('staticSpendingName')}
                   stroke="#94a3b8" 
                   strokeWidth={2} 
                   dot={false} 
@@ -409,7 +409,7 @@ export default function GuardrailsCalculator({
                 <Line 
                   type="stepAfter" 
                   dataKey="dynamicSpending" 
-                  name="Dynamic Spending" 
+                  name={t('dynamicSpendingName')}
                   stroke="#10b981" 
                   strokeWidth={3} 
                   dot={false} 

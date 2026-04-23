@@ -116,9 +116,10 @@ export default function App() {
   };
 
   // Fetch Live Prices
-  const fetchPrices = async () => {
+  const fetchPrices = async (currentAssets?: Asset[]) => {
     setIsSyncing(true);
-    const tickers = assets
+    const targetAssets = currentAssets || assets;
+    const tickers = targetAssets
       .filter(a => a.qty > 0 && a.ticker !== 'CASH')
       .map(a => a.ticker)
       .join(',');
@@ -132,7 +133,8 @@ export default function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-      const response = await fetch(`/api/prices?tickers=${encodeURIComponent(tickers)}`, { signal: controller.signal });
+      // Pass clearCache=true to ensure we bypass any reverse proxies and hit the underlying live price script we built
+      const response = await fetch(`/api/prices?tickers=${encodeURIComponent(tickers)}&clearCache=true`, { signal: controller.signal });
       clearTimeout(timeoutId);
       
       if (!response.ok) {
@@ -150,13 +152,23 @@ export default function App() {
       
       const priceMap = await response.json();
       
-      setAssets(prev => prev.map(asset => {
-        if (priceMap[asset.ticker]) {
-          const price = priceMap[asset.ticker];
-          return { ...asset, price, total: asset.qty * price };
-        }
-        return asset;
-      }));
+      setAssets(prev => {
+        const newAssets = prev.map(asset => {
+          if (priceMap[asset.ticker]) {
+            const price = priceMap[asset.ticker];
+            const updatedAsset = { ...asset, price, total: asset.qty * price };
+            
+            // Save updated live price back to the user's database so it stops overwriting with stale data on next load
+            if (auth.currentUser) {
+              setDoc(doc(db, 'users', auth.currentUser.uid, 'assets', asset.id), { ...updatedAsset, userId: auth.currentUser.uid }, { merge: true })
+                .catch(e => console.error("Error updating price in DB:", e));
+            }
+            return updatedAsset;
+          }
+          return asset;
+        });
+        return newAssets;
+      });
       setLastSync(new Date());
     } catch (error) {
       console.error("Failed to sync prices, using fallback:", error);
@@ -235,10 +247,15 @@ export default function App() {
       });
 
       // Listen to Assets
+      let isFirstAssetsLoad = true;
       const unsubAssets = onSnapshot(collection(db, 'users', user.uid, 'assets'), (snapshot) => {
         if (!snapshot.empty) {
           const loadedAssets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
           setAssets(loadedAssets);
+          if (isFirstAssetsLoad) {
+            isFirstAssetsLoad = false;
+            fetchPrices(loadedAssets);
+          }
         }
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/assets`);
@@ -813,7 +830,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-widest text-indigo-700 hover:bg-indigo-100 transition-all shadow-sm"
                 >
                   <LogOut className="w-4 h-4" />
-                  Sign Out
+                  {t('signOut')}
                 </button>
               ) : (
                 <button
@@ -821,7 +838,7 @@ export default function App() {
                   className="flex items-center gap-2 px-3 py-2 bg-indigo-600 border border-indigo-700 rounded-lg text-xs font-bold uppercase tracking-widest text-white hover:bg-indigo-700 transition-all shadow-sm"
                 >
                   <LogIn className="w-4 h-4" />
-                  Sign In to Save
+                  {t('signIn')}
                 </button>
               )}
               <button
@@ -897,7 +914,7 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <BrainCircuit className="w-4 h-4" />
-                Calculators
+                {t('calculators')}
               </div>
             </button>
             <button
@@ -928,7 +945,7 @@ export default function App() {
                       : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   )}
                 >
-                  Healthcare
+                  {t('healthcareCosts')}
                 </button>
                 <button
                   onClick={() => setCalculatorSubTab('sabbatical')}
@@ -939,7 +956,7 @@ export default function App() {
                       : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   )}
                 >
-                  Sabbatical
+                  {t('sabbaticalTab')}
                 </button>
                 <button
                   onClick={() => setCalculatorSubTab('guardrails')}
@@ -950,7 +967,7 @@ export default function App() {
                       : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                   )}
                 >
-                  Guardrails
+                  {t('guardrailsTab')}
                 </button>
               </div>
 
@@ -1033,7 +1050,7 @@ export default function App() {
                         {t('rebalanceNeeded')}
                       </h3>
                       <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                        Your portfolio has drifted beyond your {params.rebalanceThreshold}% threshold.
+                        {t('rebalanceNeededDesc').replace('{threshold}', params.rebalanceThreshold.toString())}
                       </p>
                     </div>
                   </div>
@@ -1072,7 +1089,7 @@ export default function App() {
               value={formatCurrency(effectiveWealth, currency)}
               subtitle={t('effectiveWealthSubtitle')}
               icon={<Target className="w-5 h-5" />}
-              info={`Effective Wealth is your Net Worth adjusted for future taxes (${(params.taxRate * 100).toFixed(0)}% haircut on Pre-Tax assets) and liquidity (10% haircut on Locked assets like Real Estate or Private Equity), minus your total liabilities.`}
+              info={t('effectiveWealthInfo')}
             />
             <MetricCard
               title={t('timeToFi')}
@@ -1087,7 +1104,7 @@ export default function App() {
               subtitle={`${t('liquidityRunwaySubtitle')}: ${formatCurrency(liquidCash, currency)}`}
               icon={<Timer className="w-5 h-5" />}
               progress={runwayMonths / 24}
-              info="Liquidity Runway measures how many months you can sustain your current spending using only immediately accessible cash (excluding retirement accounts like IRAs and 401ks)."
+              info={t('liquidityRunwayInfo')}
             />
           </div>
 
@@ -1117,12 +1134,12 @@ export default function App() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center gap-2 text-indigo-600">
               <BrainCircuit className="w-5 h-5" />
-              <h3 className="text-sm font-bold uppercase tracking-wider">Portfolio Coach</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider">{t('portfolioCoach')}</h3>
             </div>
             <textarea
               value={coachPrompt}
               onChange={(e) => setCoachPrompt(e.target.value)}
-              placeholder="Ask about your portfolio..."
+              placeholder={t('askAboutPortfolio')}
               className="w-full p-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               rows={3}
             />
@@ -1131,7 +1148,7 @@ export default function App() {
               disabled={isCoaching}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors disabled:bg-indigo-400"
             >
-              {isCoaching ? 'Thinking...' : <><Send className="w-4 h-4" /> Ask Coach</>}
+              {isCoaching ? t('thinking') : <><Send className="w-4 h-4" /> {t('askCoach')}</>}
             </button>
             {coachResponse && (
               <div className="p-4 bg-slate-50 rounded-lg text-sm text-slate-700 whitespace-pre-wrap">
@@ -1148,25 +1165,25 @@ export default function App() {
               message={totalCash / totalWealth < 0.10 
                 ? t('liquidityLow') 
                 : t('liquidityHealthy')}
-              info="Liquidity Check represents the total amount of cash in your portfolio, including cash held within retirement accounts (IRA, 401k, etc.)."
+              info={t('liquidityCheckInfo')}
             />
             <HealthCard
               title={t('volatilityCheck')}
               status={portfolioBeta > 1.2 ? 'warning' : 'info'}
               message={portfolioBeta > 1.2 
-                ? `High Volatility: Portfolio Beta (${portfolioBeta.toFixed(2)}) is very high.` 
-                : `Beta: ${portfolioBeta.toFixed(2)} (${t('marketCorrelation')})`}
-              info="Portfolio Beta measures your wealth's sensitivity to market movements. A beta of 1.0 means your portfolio moves in sync with the market; higher values indicate more volatility and risk."
+                ? t('highVolatility').replace('{beta}', portfolioBeta.toFixed(2)) 
+                : t('moderateVolatility').replace('{beta}', portfolioBeta.toFixed(2)).replace('{correlation}', t('marketCorrelation'))}
+              info={t('volatilityCheckInfo')}
             />
             <HealthCard
-              title={t('fiProgress')}
+              title={t('fiProgressTitle')}
               status={totalWealth >= fiTarget ? 'success' : 'info'}
               message={totalWealth >= fiTarget 
-                ? "Congratulations! You have reached Financial Independence." 
-                : `${t('fiProgress')}: ${( (totalWealth / fiTarget) * 100 ).toFixed(1)}%`}
+                ? t('fiReached')
+                : t('fiProgressPercent').replace('{percent}', ((totalWealth / fiTarget) * 100).toFixed(1))}
             />
             <HealthCard
-              title={t('safeWithdrawal')}
+              title={t('safeWithdrawalTitle')}
               status={params.withdrawalRate > 0.05 ? 'error' : params.withdrawalRate > 0.04 ? 'warning' : 'success'}
               message={`${t('yearly')}: ${formatCurrency(totalWealth * params.withdrawalRate, currency)} | ${t('monthly')}: ${formatCurrency((totalWealth * params.withdrawalRate) / 12, currency)}`}
             />

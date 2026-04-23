@@ -104,7 +104,7 @@ export default function HistoricalChart({ data, currency, onRecord }: Historical
               <Area 
                 type="monotone" 
                 dataKey="totalAssets" 
-                name="Assets"
+                name={t('assets')}
                 stroke="#10b981" 
                 strokeWidth={2}
                 fillOpacity={1} 
@@ -113,7 +113,7 @@ export default function HistoricalChart({ data, currency, onRecord }: Historical
               <Area 
                 type="monotone" 
                 dataKey="totalLiabilities" 
-                name="Liabilities"
+                name={t('liabilities')}
                 stroke="#ef4444" 
                 strokeWidth={2}
                 fillOpacity={1} 
@@ -122,7 +122,7 @@ export default function HistoricalChart({ data, currency, onRecord }: Historical
               <Area 
                 type="monotone" 
                 dataKey="netWorth" 
-                name="Net Worth"
+                name={t('netWorth')}
                 stroke="#4f46e5" 
                 strokeWidth={3}
                 fillOpacity={1} 
@@ -135,7 +135,7 @@ export default function HistoricalChart({ data, currency, onRecord }: Historical
         <div className="h-[300px] w-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50">
           <History className="w-12 h-12 text-slate-300 mb-3" />
           <p className="text-slate-500 font-medium text-center max-w-sm">
-            No historical data yet. Click "Record Current Net Worth" to start tracking your progress over time.
+            {t('noHistoricalData')}
           </p>
         </div>
       )}

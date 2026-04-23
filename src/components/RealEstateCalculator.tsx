@@ -428,7 +428,7 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
             </div>
             <div className="grid grid-cols-2 gap-4">
               <InputGroup label={t('loanTerm')} value={activeProperty.loanTerm} onChange={(v: number) => updateProperty('loanTerm', v)} suffix="yrs" />
-              <InputGroup label="Current Loan Balance (Optional)" value={activeProperty.currentLoanBalanceOverride || 0} onChange={(v: number) => updateProperty('currentLoanBalanceOverride', v)} prefix="$" step="1000" />
+              <InputGroup label={t('currentLoanBalanceOpt')} value={activeProperty.currentLoanBalanceOverride || 0} onChange={(v: number) => updateProperty('currentLoanBalanceOverride', v)} prefix="$" step="1000" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <InputGroup label={t('extraPrincipal')} value={activeProperty.extraPrincipalMonthly} onChange={(v: number) => updateProperty('extraPrincipalMonthly', v)} prefix="$" step="50" />

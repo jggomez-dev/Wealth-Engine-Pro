@@ -165,25 +165,25 @@ export default function SabbaticalCalculator({
           title={t('monthlyBudget')}
           value={formatCurrency(totalMonthlyBudget)}
           icon={<DollarSign className="w-5 h-5 text-emerald-500" />}
-          trend={{ value: strategy === 'principal' ? 'Depletes post-tax' : 'Preserves principal', isPositive: strategy === 'returns_only' }}
+          trend={{ value: strategy === 'principal' ? t('depletesPostTax') : t('preservesPrincipal'), isPositive: strategy === 'returns_only' }}
         />
         <MetricCard
           title={t('postTaxIncome')}
           value={formatCurrency(monthlyPostTaxIncome)}
           icon={<TrendingUp className="w-5 h-5 text-blue-500" />}
-          trend={{ value: `${formatCurrency(postTaxTotal)} total`, isPositive: true }}
+          trend={{ value: t('totalSummary').replace('{amount}', formatCurrency(postTaxTotal)), isPositive: true }}
         />
         <MetricCard
           title={t('realEstateIncome')}
           value={formatCurrency(monthlyRealEstateIncome)}
           icon={<Calculator className="w-5 h-5 text-purple-500" />}
-          trend={{ value: `${realEstateProperties.length} properties`, isPositive: true }}
+          trend={{ value: t('propertiesSummary').replace('{count}', realEstateProperties.length.toString()), isPositive: true }}
         />
         <MetricCard
           title={t('surplusShortfall')}
           value={formatCurrency(surplusShortfall)}
           icon={<AlertCircle className={cn("w-5 h-5", surplusShortfall >= 0 ? "text-emerald-500" : "text-rose-500")} />}
-          trend={{ value: `vs ${formatCurrency(monthlySpend)} spend`, isPositive: surplusShortfall >= 0 }}
+          trend={{ value: t('spendComparison').replace('{amount}', formatCurrency(monthlySpend)), isPositive: surplusShortfall >= 0 }}
         />
       </div>
     </div>
