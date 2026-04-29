@@ -17,7 +17,7 @@ export default function Sidebar({ params, setParams, assets, onUpdateAsset, onCl
     setParams({ ...params, [key]: value });
   };
 
-  const assetTypes: AssetType[] = ['Domestic Stock', 'International Stock', 'Cash', 'Private', 'Real Estate'];
+  const assetTypes: AssetType[] = ['Domestic Stock', 'International Stock', 'Cash', 'Private', 'Real Estate', 'Bonds', 'Crypto', 'Gold'];
 
   const toggleCategory = (type: AssetType, enabled: boolean) => {
     assets.forEach(asset => {

@@ -339,23 +339,23 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
           {onSaveToLedger && (
             <button
               onClick={handleSave}
-              disabled={savedStatus[activeId] || !!activeProperty.linkedAssetId}
+              disabled={savedStatus[activeId]}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                savedStatus[activeId] || activeProperty.linkedAssetId
+                savedStatus[activeId]
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                   : "bg-indigo-600 text-white hover:bg-indigo-700"
               )}
             >
-              {activeProperty.linkedAssetId ? (
+              {savedStatus[activeId] ? (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  Linked to Ledger
+                  {t('saved')}
                 </>
-              ) : savedStatus[activeId] ? (
+              ) : activeProperty.linkedAssetId ? (
                 <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  {t('savedToLedger')}
+                  <Save className="w-4 h-4" />
+                  Update Ledger
                 </>
               ) : (
                 <>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Asset, AssetType, TaxStatus } from '../types';
+import { parseVal } from '../utils/finance';
 import { formatCurrency, formatFullCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { Plus, Trash2, X, Search, Loader2, Edit2 } from 'lucide-react';
@@ -32,14 +33,18 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
   });
 
   const accounts = React.useMemo(() => {
-    return Array.from(new Set(assets.map(a => a.account))).sort();
+    return Array.from(new Set(assets.map(a => (a.account || '').trim()))).sort();
   }, [assets]);
 
   const lookupTicker = async (ticker: string) => {
     if (!ticker || ticker === 'CASH') return;
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/ticker-info?symbol=${encodeURIComponent(ticker)}`);
+      const res = await fetch('/api/ticker-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: ticker })
+      });
       if (res.ok) {
         const info = await res.json();
         setNewAsset(prev => ({
@@ -60,8 +65,9 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
   const groupedAssets = React.useMemo(() => {
     const groups: Record<string, Asset[]> = {};
     assets.forEach(asset => {
-      if (!groups[asset.account]) groups[asset.account] = [];
-      groups[asset.account].push(asset);
+      const acc = (asset.account || '').trim();
+      if (!groups[acc]) groups[acc] = [];
+      groups[acc].push(asset);
     });
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [assets]);
@@ -133,8 +139,16 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                   type="text"
                   placeholder="e.g. VTI"
                   value={newAsset.ticker}
-                  onChange={e => setNewAsset(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
-                  onBlur={e => lookupTicker(e.target.value)}
+                  onChange={e => setNewAsset(prev => {
+                    let val = e.target.value.toUpperCase().trim();
+                    if (val === 'BRKB' || val === 'BRK.B' || val === 'BRK B') val = 'BRK-B';
+                    if (val === 'BRKA' || val === 'BRK.A' || val === 'BRK A') val = 'BRK-A';
+                    if (val === 'BFB' || val === 'BF.B' || val === 'BF B') val = 'BF-B';
+                    if (val === 'BFA' || val === 'BF.A' || val === 'BF A') val = 'BF-A';
+                    val = val.replace(/[_ ]/g, '-');
+                    return { ...prev, ticker: val };
+                  })}
+                  onBlur={e => lookupTicker(e.target.value.trim().toUpperCase().replace(/[_ ]/g, '-'))}
                   className="w-full text-xs p-2 pr-8 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -276,7 +290,7 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                                 autoFocus
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') {
-                                    if (editAccountName.trim() && editAccountName !== account) {
+                                    if (editAccountName.trim() && editAccountName.trim() !== account) {
                                       accountAssets.forEach(a => onUpdateAsset(a.id, { account: editAccountName.trim() }));
                                     }
                                     setEditingAccount(null);
@@ -286,7 +300,7 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                                 }}
                               />
                               <button onClick={() => {
-                                if (editAccountName.trim() && editAccountName !== account) {
+                                if (editAccountName.trim() && editAccountName.trim() !== account) {
                                   accountAssets.forEach(a => onUpdateAsset(a.id, { account: editAccountName.trim() }));
                                 }
                                 setEditingAccount(null);
@@ -326,7 +340,11 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                       </div>
                     </td>
                   </tr>
-                  {accountAssets.sort((a, b) => b.total - a.total).map((asset) => {
+                    {accountAssets.sort((a, b) => {
+                      const valA = parseVal(a.total);
+                      const valB = parseVal(b.total);
+                      return valB - valA;
+                    }).map((asset) => {
                     const typeLabel = asset.type === 'Domestic Stock' ? t('domesticStock') :
                                      asset.type === 'International Stock' ? t('internationalStock') :
                                      asset.type === 'Cash' ? t('cash') :
@@ -436,13 +454,22 @@ export default function LedgerTable({ assets, currency, onUpdateAsset, onAddAsse
                       {account} {t('total')}
                     </td>
                     <td className="px-6 py-2 text-right text-xs font-mono font-bold text-slate-600 dark:text-slate-300">
-                      {formatFullCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + a.total, 0), currency)}
+                      {formatFullCurrency(accountAssets.filter(a => a.isEnabled).reduce((sum, a) => sum + parseVal(a.total), 0), currency)}
                     </td>
                     <td></td>
                   </tr>
               </React.Fragment>
             );
           })}
+          <tr className="bg-indigo-50/50 dark:bg-indigo-900/20 border-t-2 border-indigo-100 dark:border-indigo-800/50">
+            <td colSpan={5} className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 text-right">
+              Grand Total
+            </td>
+            <td className="px-6 py-4 text-right text-sm font-mono font-bold text-indigo-700 dark:text-indigo-300">
+              {formatFullCurrency(assets.filter(a => a.isEnabled).reduce((sum, a) => sum + parseVal(a.total), 0), currency)}
+            </td>
+            <td></td>
+          </tr>
         </tbody>
         </table>
       </div>

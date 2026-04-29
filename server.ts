@@ -95,6 +95,20 @@ async function startServer() {
     return normalized.replace(/[\.\s]/g, '-');
   }
 
+  app.get("/api/debug", async (req, res) => {
+    try {
+      const db = getDb();
+      if (!db) return res.status(500).json({ error: "No DB" });
+      const users = await db.collection('users').get();
+      const user = users.docs.find(u => u.data().email?.toLowerCase() === 'gomezviolinist@gmail.com');
+      if (!user) return res.json({ error: "Not found" });
+      const assets = await db.collection('users').doc(user.id).collection('assets').get();
+      res.json(assets.docs.map(d => ({id: d.id, ...d.data()})));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Request logger
   app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -106,9 +120,15 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
   });
 
-  app.get("/api/prices", async (req, res) => {
-    const tickers = req.query.tickers as string;
-    const clearCache = req.query.clearCache === 'true';
+  app.all("/api/prices", express.json(), async (req, res) => {
+    let tickers = req.body?.tickers as string;
+    let clearCache = req.body?.clearCache === true;
+    
+    if (req.method === 'GET') {
+      tickers = req.query.tickers as string;
+      clearCache = req.query.clearCache === 'true';
+    }
+
     if (!tickers) {
       return res.status(400).json({ error: "Tickers are required" });
     }
@@ -127,113 +147,44 @@ async function startServer() {
         await batch.commit();
       }
       
-      const results: { symbol: string; price: number | null }[] = [];
-      for (const symbol of tickerList) {
-        // Check Firestore first
-        const db = getDb();
-        if (db) {
-          try {
-            const docRef = db.collection('prices').doc(symbol);
-            const doc = await docRef.get();
-            if (doc.exists) {
-              const data = doc.data();
-              // Cache prices for 15 minutes (900000 ms) instead of 24 hours
-              if (data && (Date.now() - new Date(data.updatedAt).getTime() < 900000)) {
-                console.log(`[${new Date().toISOString()}] Returning Firestore price for: ${symbol}`);
-                results.push({ symbol, price: data.price });
-                continue;
-              }
-            }
-          } catch (e) {
-            console.error(`Error fetching from Firestore for ${symbol}:`, e);
-          }
-        }
-
-        try {
+      const results: { symbol: string; price: number | null }[] = await Promise.all(
+        tickerList.map(async (symbol) => {
           let price: number | null = null;
-          
-          // We try Yahoo Finance for all symbols (stocks, ETFs, mutual funds) since it doesn't require an API key
-          if (true) {
-            console.log(`[${new Date().toISOString()}] Requesting price for: ${symbol}`);
+          let stalePrice: number | null = null;
+
+          // 1. Check Firestore for cached price (15 min fresh) or stale fallback
+          if (db) {
             try {
-              const headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.9',
-              };
-              
-                // Mutual funds often have weird daily reporting schedules (end of trading day only).
-              // We try a few different yahoo finance APIs to find the latest valid price.
-              const endpoints = [
-                `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
-                `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
-                `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
-              ];
-              
-              for (const url of endpoints) {
-                const response = await nodeFetch(url, { headers });
-                if (response.ok) {
-                  const data: any = await response.json();
-                  if (url.includes('chart')) {
-                    const result = data?.chart?.result?.[0];
-                    if (result && result.meta) {
-                        price = result.meta.regularMarketPrice || result.meta.previousClose;
-                        
-                        // If meta price is missing or zero, try to extract from the most recent closing price array
-                        if ((!price || price === 0) && result.indicators?.quote?.[0]?.close) {
-                            const closePrices = result.indicators.quote[0].close;
-                            // Find the last non-null value in the array
-                            for (let i = closePrices.length - 1; i >= 0; i--) {
-                                if (closePrices[i] !== null && !isNaN(closePrices[i])) {
-                                    price = closePrices[i];
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                  } else {
-                    const result = data?.quoteResponse?.result?.[0];
-                    // Also check for 'netAssetValue' which is often used for mutual funds instead of regularMarketPrice
-                    price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask || result?.netAssetValue;
+              const docRef = db.collection('prices').doc(symbol);
+              const doc = await docRef.get();
+              if (doc.exists) {
+                const data = doc.data();
+                if (data && data.price) {
+                  // If it's less than 15 minutes old, use it immediately
+                  if (Date.now() - new Date(data.updatedAt).getTime() < 900000) {
+                    console.log(`[${new Date().toISOString()}] Using fresh Firestore price for: ${symbol}`);
+                    return { symbol, price: data.price };
                   }
-                  if (price && price > 0) break;
-                } else {
-                  if (response.status !== 404 && response.status !== 401) {
-                    console.warn(`Yahoo endpoint failed (${response.status}): ${url}`);
-                  }
+                  stalePrice = data.price;
                 }
               }
-              if (price && price !== 0) {
-                console.log(`[${new Date().toISOString()}] Price response for ${symbol}: ${price}`);
-              }
-            } catch (err) {
-              console.error(`Asset fetch failed for ${symbol}:`, err);
+            } catch (e) {
+              console.error(`Error fetching from Firestore for ${symbol}:`, e);
             }
           }
 
-          if ((!price || price === 0) && isMutualFund(symbol)) {
-            console.log(`[${new Date().toISOString()}] Requesting Google Finance for: ${symbol}`);
-            const gfPrice = await fetchGoogleFinanceMutualFund(symbol);
-            if (gfPrice) price = gfPrice;
+          // 2. Try live fetch if not fresh in Firestore
+          console.log(`[${new Date().toISOString()}] Attempting live fetch for: ${symbol}`);
+          price = await fetchLivePrice(symbol, FINNHUB_API_KEY);
+
+          // 3. Use stale price as fallback if live fetch fails
+          if ((!price || price === 0) && stalePrice) {
+            console.log(`[${new Date().toISOString()}] Live fetch failed for ${symbol}, using stale price: ${stalePrice}`);
+            price = stalePrice;
           }
-          
-          // Fallback to finnhub for remaining non-mutual funds if the key is available
-          // We DO NOT use Finnhub for Mutual Funds because it returns stale/inaccurate data
-          if ((!price || price === 0) && FINNHUB_API_KEY && !isMutualFund(symbol)) {
-            // Delay each request by 1 second to stay under the Finnhub free tier limit
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            console.log(`[${new Date().toISOString()}] Requesting Finnhub for: ${symbol}`);
-            const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_API_KEY}`);
-            
-            if (response.ok) {
-              const data = await response.json();
-              price = parseFloat(data?.["c"]);
-            }
-          }
-          
+
+          // 4. Update Firestore
           if (price && !isNaN(price) && price !== 0) {
-            // Save to Firestore
             if (db) {
               try {
                 await db.collection('prices').doc(symbol).set({
@@ -246,16 +197,20 @@ async function startServer() {
                 console.error(`Error saving to Firestore for ${symbol}:`, e);
               }
             }
-            results.push({ symbol, price });
+            return { symbol, price };
           } else {
-            console.warn(`[${new Date().toISOString()}] No price found for ${symbol}, using mock`);
-            results.push({ symbol, price: getMockPrice(symbol) });
+            // Final fallback to mock ONLY for common tickers
+            const mock = getMockPrice(symbol);
+            if (mock !== 100.0) {
+              console.warn(`[${new Date().toISOString()}] No price found for ${symbol}, using specific mock`);
+              return { symbol, price: mock };
+            } else {
+              console.warn(`[${new Date().toISOString()}] No price found or mock available for ${symbol}`);
+              return { symbol, price: null };
+            }
           }
-        } catch (e) {
-          console.error(`[${new Date().toISOString()}] Error fetching price for ${symbol}:`, e);
-          results.push({ symbol, price: getMockPrice(symbol) });
-        }
-      }
+        })
+      );
       
       const priceMap = results.reduce((acc, curr) => {
         if (curr.price !== null) {
@@ -267,7 +222,6 @@ async function startServer() {
       res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.set('Pragma', 'no-cache');
       res.set('Expires', '0');
-      res.set('Surrogate-Control', 'no-store');
       res.json(priceMap);
     } catch (error) {
       console.error("Failed to fetch prices:", error);
@@ -275,8 +229,80 @@ async function startServer() {
     }
   });
 
-  app.get("/api/ticker-info", async (req, res) => {
-    const rawSymbol = (req.query.symbol as string)?.toUpperCase();
+  async function fetchLivePrice(symbol: string, finnhubKey?: string): Promise<number | null> {
+    let price: number | null = null;
+    
+    // We try Yahoo Finance first for all symbols
+    try {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      };
+      
+      const endpoints = [
+        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
+        `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`,
+        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
+      ];
+      
+      for (const url of endpoints) {
+        try {
+          const response = await nodeFetch(url, { headers });
+          if (response.ok) {
+            const data: any = await response.json();
+            if (url.includes('chart')) {
+              const result = data?.chart?.result?.[0];
+              if (result && result.meta) {
+                  price = result.meta.regularMarketPrice || result.meta.previousClose;
+                  if ((!price || price === 0) && result.indicators?.quote?.[0]?.close) {
+                      const closePrices = result.indicators.quote[0].close;
+                      for (let i = closePrices.length - 1; i >= 0; i--) {
+                          if (closePrices[i] !== null && !isNaN(closePrices[i])) {
+                              price = closePrices[i];
+                              break;
+                          }
+                      }
+                  }
+              }
+            } else {
+              const result = data?.quoteResponse?.result?.[0];
+              price = result?.regularMarketPrice || result?.previousClose || result?.bid || result?.ask || result?.netAssetValue;
+            }
+            if (price && price > 0) return price;
+          }
+        } catch (e) {
+          // Continue to next endpoint
+        }
+      }
+    } catch (err) {
+      console.error(`Yahoo fetch failed for ${symbol}:`, err);
+    }
+    
+    // Fallback to Google Finance
+    const gfPrice = await fetchGoogleFinanceMutualFund(symbol);
+    if (gfPrice) return gfPrice;
+    
+    // Fallback to Finnhub
+    if (finnhubKey && !isMutualFund(symbol)) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const response = await nodeFetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`);
+        if (response.ok) {
+          const data: any = await response.json();
+          const p = parseFloat(data?.["c"]);
+          if (p && p > 0) return p;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    return null;
+  }
+
+
+  app.post("/api/ticker-info", express.json(), async (req, res) => {
+    const rawSymbol = (req.body.symbol as string)?.toUpperCase();
     if (!rawSymbol) return res.status(400).json({ error: "Symbol is required" });
 
     const symbol = normalizeTicker(rawSymbol);

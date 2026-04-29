@@ -313,6 +313,10 @@ export const translations = {
     monthly: 'Monthly',
     signOut: 'Sign Out',
     signIn: 'Sign In to Save',
+    assets: 'Assets',
+    deleteAsset: 'Delete Asset',
+    addAssetClass: 'Add Asset Class',
+    saved: 'Saved',
   },
   es: {
     appName: 'Wealth Engine',
@@ -626,5 +630,9 @@ export const translations = {
     monthly: 'Mensual',
     signOut: 'Cerrar Sesión',
     signIn: 'Iniciar Sesión para Guardar',
+    assets: 'Activos',
+    deleteAsset: 'Eliminar Activo',
+    addAssetClass: 'Agregar Clase de Activo',
+    saved: 'Guardado',
   }
 };

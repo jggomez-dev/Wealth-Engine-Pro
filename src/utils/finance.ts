@@ -126,3 +126,10 @@ export function calculateRunway(liquidCash: number, monthlySpend: number): numbe
   if (monthlySpend <= 0) return Infinity;
   return liquidCash / monthlySpend;
 }
+
+export function parseVal(val: any): number {
+  if (typeof val === 'string') {
+    return parseFloat(val.replace(/,/g, '')) || 0;
+  }
+  return Number(val) || 0;
+}

@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth, PropertyConfig, AssetType } from './types';
-import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear, MonteCarloResults } from './utils/finance';
+import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear, MonteCarloResults, parseVal } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
 import { formatCurrency, cn } from './lib/utils';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import Sidebar from './components/Sidebar';
 import MetricCard from './components/MetricCard';
 import PortfolioChart from './components/PortfolioChart';
@@ -41,6 +42,7 @@ const INITIAL_ASSETS: Asset[] = [
   { id: '15', account: 'IRA 2', ticker: 'CASH', type: 'Cash', taxStatus: 'Pre-Tax', qty: 0, beta: 0, total: 183.56, isEnabled: true },
 ];
 
+// Metric constants (nominal expected returns and volatility)
 const ASSET_CLASS_METRICS: Record<AssetType, { mu: number; sigma: number }> = {
   'Domestic Stock': { mu: 0.08, sigma: 0.15 },
   'International Stock': { mu: 0.07, sigma: 0.18 },
@@ -61,7 +63,7 @@ export default function App() {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [realEstateProperties, setRealEstateProperties] = useState<PropertyConfig[]>([
-    { id: '1', name: 'Property 1', ...DEFAULT_PROPERTY }
+    { id: '1', name: 'Primary Residence', ...DEFAULT_PROPERTY, linkedAssetId: '12' }
   ]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -116,74 +118,120 @@ export default function App() {
   };
 
   // Fetch Live Prices
-  const fetchPrices = async (currentAssets?: Asset[]) => {
+  const fetchPrices = async (currentAssets?: Asset[], forceClearCache: boolean = false) => {
+    if (isSyncing && !forceClearCache) return; // Prevent concurrent syncs
     setIsSyncing(true);
     const targetAssets = currentAssets || assets;
-    const tickers = targetAssets
-      .filter(a => a.qty > 0 && a.ticker !== 'CASH')
-      .map(a => a.ticker)
-      .join(',');
+    const tickers = Array.from(new Set(targetAssets
+      .filter(a => a.ticker && a.ticker !== 'CASH' && (a.qty > 0 || (a.type !== 'Private' && a.type !== 'Real Estate' && a.ticker !== 'Primary Res' && a.ticker !== 'Company Dtm')))
+      .map(a => {
+        let t = a.ticker.toUpperCase().trim().replace(/[\.\s_]/g, '-');
+        if (t === 'BRKB') t = 'BRK-B';
+        if (t === 'BRKA') t = 'BRK-A';
+        if (t === 'BFB') t = 'BF-B';
+        if (t === 'BFA') t = 'BF-A';
+        return t;
+      })
+    )).join(',');
     
     if (!tickers) {
       setIsSyncing(false);
       return;
     }
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    const maxRetries = 2;
+    let attempt = 0;
+    let lastError: Error | null = null;
 
-      // Pass clearCache=true to ensure we bypass any reverse proxies and hit the underlying live price script we built
-      const response = await fetch(`/api/prices?tickers=${encodeURIComponent(tickers)}&clearCache=true`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Sync failed: ${response.status} ${response.statusText} - ${errorText}`);
-        throw new Error(`Sync failed: ${response.statusText}`);
-      }
-      
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error(`Expected JSON but got ${contentType}:`, text.substring(0, 100));
-        throw new Error("Received non-JSON response from server");
-      }
-      
-      const priceMap = await response.json();
-      
-      setAssets(prev => {
-        const newAssets = prev.map(asset => {
-          if (priceMap[asset.ticker]) {
-            const price = priceMap[asset.ticker];
-            const updatedAsset = { ...asset, price, total: asset.qty * price };
-            
-            // Save updated live price back to the user's database so it stops overwriting with stale data on next load
-            if (auth.currentUser) {
-              setDoc(doc(db, 'users', auth.currentUser.uid, 'assets', asset.id), { ...updatedAsset, userId: auth.currentUser.uid }, { merge: true })
-                .catch(e => console.error("Error updating price in DB:", e));
-            }
-            return updatedAsset;
-          }
-          return asset;
+    while (attempt <= maxRetries) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); 
+        
+        const response = await fetch('/api/prices', { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tickers, clearCache: forceClearCache }),
+          signal: controller.signal 
         });
-        return newAssets;
-      });
-      setLastSync(new Date());
-    } catch (error) {
-      console.error("Failed to sync prices, using fallback:", error);
-      // Fallback to some reasonable defaults if API fails
-      const FALLBACK: Record<string, number> = { VTIAX: 34.12, VXUS: 63.45, VEA: 52.18, VTSAX: 128.89, VTTSX: 27.34, FZROX: 19.56 };
-      setAssets(prev => prev.map(asset => {
-        if (FALLBACK[asset.ticker] && asset.total === 0) {
-          const price = FALLBACK[asset.ticker];
-          return { ...asset, price, total: asset.qty * price };
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Sync failed: ${response.statusText}`);
         }
-        return asset;
-      }));
-    } finally {
-      setIsSyncing(false);
+        
+        const rawText = await response.text();
+        let priceMap;
+        try {
+          priceMap = JSON.parse(rawText);
+        } catch(e) {
+          console.error("Invalid JSON response. Raw text received: ", rawText.substring(0, 200));
+          throw new Error("Invalid format from server: " + rawText.substring(0, 50));
+        }
+
+        if (priceMap && typeof priceMap === 'object') {
+          console.log("Price sync completed. Received Map:", priceMap);
+        } else {
+          throw new Error("Invalid response from price server");
+        }
+        
+        setAssets(prev => {
+          const batch = auth.currentUser ? writeBatch(db) : null;
+          let hasUpdates = false;
+
+          const newAssets = prev.map(asset => {
+            let checkTicker = asset.ticker;
+            if (checkTicker) {
+              checkTicker = checkTicker.toUpperCase().trim().replace(/[\.\s_]/g, '-');
+            }
+            if (checkTicker === 'BRK-B' || checkTicker === 'BRKB') checkTicker = 'BRK-B';
+            if (checkTicker === 'BRK-A' || checkTicker === 'BRKA') checkTicker = 'BRK-A';
+            if (checkTicker === 'BF-B' || checkTicker === 'BFB') checkTicker = 'BF-B';
+            if (checkTicker === 'BF-A' || checkTicker === 'BFA') checkTicker = 'BF-A';
+
+            if (priceMap[checkTicker] !== undefined) {
+              const price = priceMap[checkTicker];
+              const qty = Number(asset.qty) || 0;
+              let newTotal = asset.total;
+              
+              if (qty > 0 && asset.type !== 'Real Estate' && asset.type !== 'Private' && asset.ticker !== 'Primary Res' && asset.ticker !== 'Company Dtm') {
+                 newTotal = qty * price;
+              }
+
+              const updatedAsset = { ...asset, price, ticker: checkTicker, total: newTotal };
+              
+              if (auth.currentUser && batch) {
+                batch.set(doc(db, 'users', auth.currentUser.uid, 'assets', asset.id), { ...updatedAsset, userId: auth.currentUser.uid }, { merge: true });
+                hasUpdates = true;
+              }
+              return updatedAsset;
+            }
+            return asset;
+          });
+
+          if (batch && hasUpdates) {
+            batch.commit().catch(e => console.error("Batch update failed:", e));
+          }
+
+          return newAssets;
+        });
+        setLastSync(new Date());
+        setIsSyncing(false);
+        return; // Success, exit retry loop
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`Price sync attempt ${attempt + 1} failed:`, error);
+        attempt++;
+        if (attempt <= maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+        }
+      }
     }
+
+    if (lastError) {
+      console.error("Failed to sync prices after retries:", lastError);
+    }
+    setIsSyncing(false);
   };
 
   useEffect(() => {
@@ -250,11 +298,79 @@ export default function App() {
       let isFirstAssetsLoad = true;
       const unsubAssets = onSnapshot(collection(db, 'users', user.uid, 'assets'), (snapshot) => {
         if (!snapshot.empty) {
-          const loadedAssets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset));
-          setAssets(loadedAssets);
+          const loadedAssets = snapshot.docs.map(doc => {
+            const data = doc.data();
+            const parse = (v: any) => {
+              if (typeof v === 'string') return parseFloat(v.replace(/,/g, '')) || 0;
+              return Number(v) || 0;
+            };
+            return { 
+              id: doc.id, 
+              ...data,
+              total: parse(data.total),
+              qty: parse(data.qty),
+              price: parse(data.price),
+              basis: parse(data.basis),
+              isEnabled: data.isEnabled !== false,
+            } as Asset;
+          });
+          
+          // Fix known typo/split accounts "IRA 1 I" -> "IRA 1" and "IRA 2 J" -> "IRA 2"
+          let needsUpdate = false;
+          const cleanedAssets = loadedAssets.map(a => {
+            let nextAcc = a.account;
+            // Also trim all accounts
+            if (nextAcc && nextAcc.trim() !== nextAcc) nextAcc = nextAcc.trim();
+
+            // Fix specific errors mentioned by user
+            if (nextAcc && nextAcc.toUpperCase() === 'IRA 1 I') nextAcc = 'IRA 1';
+            if (nextAcc && nextAcc.toUpperCase() === 'IRA 2 J') nextAcc = 'IRA 2';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA J') nextAcc = 'Roth IRA 2';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA I') nextAcc = 'Roth IRA 1';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA 1 I') nextAcc = 'Roth IRA 1';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA 2 J') nextAcc = 'Roth IRA 2';
+
+            // Normalize common capitalization differences for Roth IRA
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA') nextAcc = 'Roth IRA';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA 1') nextAcc = 'Roth IRA 1';
+            if (nextAcc && nextAcc.toUpperCase() === 'ROTH IRA 2') nextAcc = 'Roth IRA 2';
+            
+            let nextTicker = a.ticker;
+            if (nextTicker) {
+               nextTicker = nextTicker.toUpperCase().trim().replace(/[\.\s_]/g, '-');
+            }
+            if (nextTicker === 'BRKB') nextTicker = 'BRK-B';
+            if (nextTicker === 'BRKA') nextTicker = 'BRK-A';
+            if (nextTicker === 'BFB') nextTicker = 'BF-B';
+            if (nextTicker === 'BFA') nextTicker = 'BF-A';
+
+            if (nextAcc !== a.account || nextTicker !== a.ticker) {
+              needsUpdate = true;
+              return { ...a, account: nextAcc, ticker: nextTicker, isDirty: true };
+            }
+            return a;
+          });
+
+          if (needsUpdate) {
+            const batch = writeBatch(db);
+            cleanedAssets.forEach(a => {
+               if ((a as any).isDirty) {
+                 const { isDirty, ...dataToSave } = a as any;
+                 batch.update(doc(db, 'users', user.uid, 'assets', a.id), { account: a.account, ticker: a.ticker });
+               }
+            });
+            batch.commit().catch(e => console.error("Failed to clean up account names:", e));
+          }
+
+          const finalAssets = cleanedAssets.map(a => {
+            const { isDirty, ...rest } = a as any;
+            return rest as Asset;
+          });
+
+          setAssets(finalAssets);
           if (isFirstAssetsLoad) {
             isFirstAssetsLoad = false;
-            fetchPrices(loadedAssets);
+            fetchPrices(finalAssets);
           }
         }
       }, (error) => {
@@ -264,7 +380,20 @@ export default function App() {
       // Listen to Liabilities
       const unsubLiabilities = onSnapshot(collection(db, 'users', user.uid, 'liabilities'), (snapshot) => {
         if (!snapshot.empty) {
-          const loadedLiabilities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Liability));
+          const loadedLiabilities = snapshot.docs.map(doc => {
+            const data = doc.data();
+            const parse = (v: any) => {
+              if (typeof v === 'string') return parseFloat(v.replace(/,/g, '')) || 0;
+              return Number(v) || 0;
+            };
+            return {
+              id: doc.id,
+              ...data,
+              balance: parse(data.balance),
+              interestRate: parse(data.interestRate),
+              minimumPayment: parse(data.minimumPayment)
+            } as Liability;
+          });
           setLiabilities(loadedLiabilities);
         } else {
           setLiabilities([]);
@@ -367,9 +496,14 @@ export default function App() {
     setAssets(prev => prev.map(asset => {
       if (asset.id === id) {
         const updated = { ...asset, ...updates };
-        if (updated.price && updated.qty !== undefined) {
-          updated.total = updated.qty * updated.price;
-        }
+          if (('qty' in updates || 'price' in updates) && !('total' in updates) && updated.price !== undefined && updated.ticker !== 'CASH') {
+            const qty = Number(updated.qty) || 0;
+            const price = Number(updated.price) || 0;
+            // Only auto-calculate total if it's a standard ticker/quantity asset
+            if (qty > 0 && updated.type !== 'Real Estate' && updated.type !== 'Private' && updated.ticker !== 'Primary Res' && updated.ticker !== 'Company Dtm') {
+              updated.total = qty * price;
+            }
+          }
         if (user) {
           setDoc(doc(db, 'users', user.uid, 'assets', id), { ...updated, userId: user.uid }, { merge: true }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}/assets/${id}`));
         }
@@ -381,7 +515,18 @@ export default function App() {
 
   const addAsset = (asset: Omit<Asset, 'id'>) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const newAsset: Asset = { ...asset, id };
+    
+    // Normalize ticker on creation
+    let normalizedTicker = asset.ticker;
+    if (normalizedTicker && normalizedTicker !== 'CASH') {
+      normalizedTicker = normalizedTicker.toUpperCase().trim().replace(/[\.\s_]/g, '-');
+      if (normalizedTicker === 'BRKB') normalizedTicker = 'BRK-B';
+      if (normalizedTicker === 'BRKA') normalizedTicker = 'BRK-A';
+      if (normalizedTicker === 'BFB') normalizedTicker = 'BF-B';
+      if (normalizedTicker === 'BFA') normalizedTicker = 'BF-A';
+    }
+
+    const newAsset: Asset = { ...asset, id, ticker: normalizedTicker };
     
     // Ensure total is calculated if qty and price are present
     if (newAsset.qty && newAsset.price && !newAsset.total) {
@@ -501,40 +646,54 @@ export default function App() {
   const activeAssets = useMemo(() => assets.filter(a => a.isEnabled), [assets]);
   
   const netAssetsForCharts = useMemo(() => {
-    const clonedAssets = activeAssets.map(a => ({ ...a }));
+    const clonedAssets = activeAssets.map(a => ({ ...a, total: parseVal(a.total) }));
     
+    // 1. Linked Liabilities (Mortgages usually)
     const linkedLiabilityBalances: Record<string, number> = {};
+    const linkedLiabilityIds = new Set<string>();
+
     realEstateProperties.forEach(prop => {
       if (prop.linkedAssetId && prop.linkedLiabilityId) {
         const liability = liabilities.find(l => l.id === prop.linkedLiabilityId);
         if (liability) {
-          linkedLiabilityBalances[prop.linkedAssetId] = (linkedLiabilityBalances[prop.linkedAssetId] || 0) + liability.balance;
+          linkedLiabilityBalances[prop.linkedAssetId] = (linkedLiabilityBalances[prop.linkedAssetId] || 0) + parseVal(liability.balance);
+          linkedLiabilityIds.add(prop.linkedLiabilityId);
         }
       }
     });
 
-    const linkedLiabilityIds = new Set(realEstateProperties.map(p => p.linkedLiabilityId).filter(Boolean));
-    let unlinkedMortgage = liabilities
-      .filter(l => l.type === 'Mortgage' && !linkedLiabilityIds.has(l.id))
-      .reduce((sum, l) => sum + l.balance, 0);
+    // Subtract linked liabilities from their assets
+    clonedAssets.forEach(asset => {
+      if (linkedLiabilityBalances[asset.id]) {
+        asset.total = Math.max(0, asset.total - linkedLiabilityBalances[asset.id]);
+      }
+    });
 
-    for (const asset of clonedAssets) {
-      if (asset.type === 'Real Estate') {
-        if (linkedLiabilityBalances[asset.id]) {
-          asset.total = Math.max(0, asset.total - linkedLiabilityBalances[asset.id]);
-        }
-        if (unlinkedMortgage > 0 && asset.total > 0) {
-          if (asset.total >= unlinkedMortgage) {
-            asset.total -= unlinkedMortgage;
-            unlinkedMortgage = 0;
-          } else {
-            unlinkedMortgage -= asset.total;
-            asset.total = 0;
-          }
-        }
+    // 2. Unlinked Liabilities (The "Equity Gap")
+    let unlinkedLiabilityTotal = liabilities
+      .filter(l => !linkedLiabilityIds.has(l.id))
+      .reduce((sum, l) => sum + parseVal(l.balance), 0);
+
+    // Subtract remaining debt from assets in order of liquidity
+    // (Cash, then Stocks, then others)
+    const liquidityOrder: AssetType[] = ['Cash', 'Domestic Stock', 'International Stock', 'Crypto', 'Gold', 'Bonds', 'Private', 'Real Estate'];
+    
+    const sortedAssets = [...clonedAssets].sort((a, b) => {
+      const idxA = liquidityOrder.indexOf(a.type);
+      const idxB = liquidityOrder.indexOf(b.type);
+      return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+    });
+
+    for (const asset of sortedAssets) {
+      if (unlinkedLiabilityTotal <= 0) break;
+      if (asset.total > 0) {
+        const toSubtract = Math.min(asset.total, unlinkedLiabilityTotal);
+        asset.total -= toSubtract;
+        unlinkedLiabilityTotal -= toSubtract;
       }
     }
-    return clonedAssets;
+
+    return sortedAssets;
   }, [activeAssets, liabilities, realEstateProperties]);
 
   const strategyCategories = useMemo(() => {
@@ -544,7 +703,7 @@ export default function App() {
   const portfolioData = useMemo(() => {
     const totalsByType: Record<string, number> = {};
     netAssetsForCharts.forEach(asset => {
-      totalsByType[asset.type] = (totalsByType[asset.type] || 0) + asset.total;
+      totalsByType[asset.type] = (totalsByType[asset.type] || 0) + (Number(asset.total) || 0);
     });
 
     const strategyTotalValue = strategyCategories.reduce((sum, type) => sum + (totalsByType[type] || 0), 0);
@@ -658,8 +817,10 @@ export default function App() {
     return { mu: weightedMu, sigma: weightedSigma };
   }, [portfolioData, dynamicAssetMetrics]);
 
-  const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + a.total, 0), [activeAssets]);
-  const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + l.balance, 0), [liabilities]);
+  const totalAssets = useMemo(() => activeAssets.reduce((sum, a) => sum + parseVal(a.total), 0), [activeAssets]);
+
+  const totalLiabilities = useMemo(() => liabilities.reduce((sum, l) => sum + parseVal(l.balance), 0), [liabilities]);
+
   const totalWealth = totalAssets - totalLiabilities; // Net Worth
 
   const recordNetWorth = () => {
@@ -682,15 +843,15 @@ export default function App() {
   const totalCash = useMemo(() => 
     activeAssets
       .filter(a => a.type === 'Cash')
-      .reduce((sum, a) => sum + a.total, 0), 
+      .reduce((sum, a) => sum + parseVal(a.total), 0), 
     [activeAssets]
   );
   const liquidCash = useMemo(() => {
     return activeAssets.reduce((sum, a) => {
       if (a.taxStatus === 'Roth') {
-        return sum + (a.basis || 0);
-      } else if (a.type === 'Cash' && !a.account.toLowerCase().includes('ira') && !a.account.toLowerCase().includes('401k')) {
-        return sum + a.total;
+        return sum + parseVal(a.basis);
+      } else if (a.type === 'Cash' && !(a.account || '').toLowerCase().includes('ira') && !(a.account || '').toLowerCase().includes('401k')) {
+        return sum + parseVal(a.total);
       }
       return sum;
     }, 0);
@@ -702,19 +863,20 @@ export default function App() {
   
   const effectiveWealth = useMemo(() => {
     const adjustedAssets = activeAssets.reduce((sum, a) => {
+      const tot = parseVal(a.total);
       if (a.taxStatus === 'Pre-Tax') {
-        return sum + (a.total * (1 - params.taxRate));
+        return sum + (tot * (1 - params.taxRate));
       }
       if (a.taxStatus === 'Locked') {
-        return sum + (a.total * 0.9); // Reduced to 10% haircut for illiquidity
+        return sum + (tot * 0.9); // Reduced to 10% haircut for illiquidity
       }
       if (a.taxStatus === 'Roth') {
-        const basis = a.basis || 0;
-        const earnings = Math.max(0, a.total - basis);
+        const basis = parseVal(a.basis);
+        const earnings = Math.max(0, tot - basis);
         // Basis is liquid (1.0), earnings are locked (0.9)
         return sum + basis + (earnings * 0.9);
       }
-      return sum + a.total;
+      return sum + tot;
     }, 0);
     return adjustedAssets - totalLiabilities;
   }, [activeAssets, params.taxRate, totalLiabilities]);
@@ -759,7 +921,8 @@ export default function App() {
   }, [outOfWhackCount, isRebalanceAlertDismissed]);
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden relative">
+    <ErrorBoundary>
+      <div className="flex h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden relative">
       {/* Desktop Sidebar (Permanent) */}
       <div className="hidden lg:block lg:w-64 xl:w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:bg-slate-50/50 lg:dark:bg-slate-950/50 shrink-0 overflow-y-auto">
         <Sidebar 
@@ -790,7 +953,8 @@ export default function App() {
       )}
 
       <main className="flex-1 overflow-y-auto pt-8 lg:pt-12 p-4 lg:p-8 min-w-0">
-        <div id="dashboard-content" className="max-w-[95rem] mx-auto space-y-6 lg:space-y-8">
+        <ErrorBoundary>
+          <div id="dashboard-content" className="max-w-[95rem] mx-auto space-y-6 lg:space-y-8">
           {/* Error Toast */}
           {errorMessage && (
             <div className="fixed top-4 right-4 z-50 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg shadow-lg flex items-start gap-3 max-w-md animate-in fade-in slide-in-from-top-4">
@@ -855,7 +1019,7 @@ export default function App() {
                 {language === 'en' ? 'ES' : 'EN'}
               </button>
               <button 
-                onClick={() => fetchPrices()}
+                onClick={() => fetchPrices(undefined, true)}
                 disabled={isSyncing}
                 className="p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
                 title="Refresh Prices"
@@ -1077,36 +1241,36 @@ export default function App() {
               )}
 
               {/* Top Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6">
-            <MetricCard
-              title={params.marketCrash > 0 ? t('crashedNetWorth') : t('netWorth')}
-              value={formatCurrency(params.marketCrash > 0 ? totalWealth * (1 - params.marketCrash) : totalWealth, currency)}
-              subtitle={params.marketCrash > 0 ? `${t('originalValue')}: ${formatCurrency(totalWealth, currency)}` : `${t('netWorthCalculation')}`}
-              icon={<Wallet className="w-5 h-5" />}
-            />
-            <MetricCard
-              title={t('effectiveWealth')}
-              value={formatCurrency(effectiveWealth, currency)}
-              subtitle={t('effectiveWealthSubtitle')}
-              icon={<Target className="w-5 h-5" />}
-              info={t('effectiveWealthInfo')}
-            />
-            <MetricCard
-              title={t('timeToFi')}
-              value={fiYear !== null ? `${fiYear.toFixed(1)} ${t('years')}` : t('never')}
-              subtitle={`${t('fiTarget')}: ${formatCurrency(fiTarget, currency)}`}
-              icon={<Target className="w-5 h-5" />}
-              progress={totalWealth / fiTarget}
-            />
-            <MetricCard
-              title={t('liquidityRunway')}
-              value={`${runwayMonths.toFixed(1)} ${t('months')}`}
-              subtitle={`${t('liquidityRunwaySubtitle')}: ${formatCurrency(liquidCash, currency)}`}
-              icon={<Timer className="w-5 h-5" />}
-              progress={runwayMonths / 24}
-              info={t('liquidityRunwayInfo')}
-            />
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                <MetricCard
+                  title="Live Net Worth"
+                  value={formatCurrency(totalWealth, currency)}
+                  subtitle="Real-time ledger sync"
+                  icon={<Wallet className="w-5 h-5 text-indigo-500" />}
+                />
+                <MetricCard
+                  title={t('effectiveWealth')}
+                  value={formatCurrency(effectiveWealth, currency)}
+                  subtitle={t('effectiveWealthSubtitle')}
+                  icon={<Target className="w-5 h-5 text-blue-500" />}
+                  info={t('effectiveWealthInfo')}
+                />
+                <MetricCard
+                  title={t('timeToFi')}
+                  value={fiYear !== null ? `${fiYear.toFixed(1)} ${t('years')}` : t('never')}
+                  subtitle={`${t('fiTarget')}: ${formatCurrency(fiTarget, currency)}`}
+                  icon={<Target className="w-5 h-5 text-emerald-500" />}
+                  progress={totalWealth > 0 ? totalWealth / fiTarget : 0}
+                />
+                <MetricCard
+                  title={t('liquidityRunway')}
+                  value={`${runwayMonths.toFixed(1)} ${t('months')}`}
+                  subtitle={`${t('liquidityRunwaySubtitle')}: ${formatCurrency(liquidCash, currency)}`}
+                  icon={<Timer className="w-5 h-5 text-amber-500" />}
+                  progress={runwayMonths / 24}
+                  info={t('liquidityRunwayInfo')}
+                />
+              </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="min-w-0">
@@ -1210,10 +1374,12 @@ export default function App() {
               />
             </>
           )}
-            </>
-          )}
+          </>
+        )}
         </div>
-      </main>
-    </div>
+      </ErrorBoundary>
+    </main>
+  </div>
+</ErrorBoundary>
   );
 }

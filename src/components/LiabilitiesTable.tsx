@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Liability, LiabilityType } from '../types';
+import { parseVal } from '../utils/finance';
 import { formatCurrency } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -142,7 +143,11 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {liabilities.sort((a, b) => b.balance - a.balance).map((liability) => {
+            {liabilities.sort((a, b) => {
+              const valA = parseVal(a.balance);
+              const valB = parseVal(b.balance);
+              return valB - valA;
+            }).map((liability) => {
               const typeLabel = liability.type === 'Mortgage' ? t('mortgage') :
                                liability.type === 'Student Loan' ? t('studentLoan') :
                                liability.type === 'Credit Card' ? t('creditCard') :
@@ -204,7 +209,7 @@ export default function LiabilitiesTable({ liabilities, currency, onUpdateLiabil
                   {t('totalLiabilities')}
                 </td>
                 <td className="px-6 py-3 text-right text-sm font-mono font-bold text-rose-600 dark:text-rose-400">
-                  {formatCurrency(liabilities.reduce((sum, l) => sum + l.balance, 0), currency)}
+                  {formatCurrency(liabilities.reduce((sum, l) => sum + parseVal(l.balance), 0), currency)}
                 </td>
                 <td></td>
               </tr>
