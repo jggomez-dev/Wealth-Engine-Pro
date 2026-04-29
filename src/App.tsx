@@ -66,10 +66,19 @@ export default function App() {
   }, [assets]);
   
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const liabilitiesRef = useRef<Liability[]>([]);
+  useEffect(() => {
+    liabilitiesRef.current = liabilities;
+  }, [liabilities]);
+
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [realEstateProperties, setRealEstateProperties] = useState<PropertyConfig[]>([
     { id: '1', name: 'Primary Residence', ...DEFAULT_PROPERTY, linkedAssetId: '12' }
   ]);
+  const realEstatePropertiesRef = useRef<PropertyConfig[]>(realEstateProperties);
+  useEffect(() => {
+    realEstatePropertiesRef.current = realEstateProperties;
+  }, [realEstateProperties]);
   const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'calculators' | 'realEstate' | 'portfolioStrategy'>('dashboard');
@@ -607,14 +616,14 @@ export default function App() {
   };
 
   const handleSavePropertyToLedger = (propertyId: string, propertyData: RealEstatePropertyData) => {
-    const property = realEstateProperties.find(p => p.id === propertyId);
+    const property = realEstatePropertiesRef.current.find(p => p.id === propertyId);
     if (!property) return;
 
     let assetId = property.linkedAssetId;
     let liabilityId = property.linkedLiabilityId;
     let needsPropertyUpdate = false;
 
-    if (assetId && assets.some(a => a.id === assetId)) {
+    if (assetId && assetsRef.current.some(a => a.id === assetId)) {
       updateAsset(assetId, {
         account: propertyData.name,
         total: propertyData.value,
@@ -634,7 +643,7 @@ export default function App() {
     }
 
     if (propertyData.loanBalance > 0) {
-      if (liabilityId && liabilities.some(l => l.id === liabilityId)) {
+      if (liabilityId && liabilitiesRef.current.some(l => l.id === liabilityId)) {
         updateLiability(liabilityId, {
           name: `${propertyData.name} Mortgage`,
           balance: propertyData.loanBalance,
@@ -1270,7 +1279,7 @@ export default function App() {
               )}
 
               {/* Top Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 lg:gap-6">
                 <MetricCard
                   title="Live Net Worth"
                   value={formatCurrency(totalWealth, currency)}

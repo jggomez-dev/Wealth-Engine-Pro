@@ -103,13 +103,10 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
   const { t } = useLanguage();
   
   const [activeId, setActiveId] = useState<string>(properties[0]?.id || '1');
-  const [savedStatus, setSavedStatus] = useState<Record<string, boolean>>({});
-
   const activeProperty = properties.find(p => p.id === activeId) || properties[0];
 
   const updateProperty = (field: keyof PropertyConfig, value: any) => {
     onUpdateProperty(activeId, { [field]: value });
-    setSavedStatus(prev => ({ ...prev, [activeId]: false }));
   };
 
   const calculations = useMemo(() => {
@@ -270,7 +267,7 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
   }, [activeProperty]);
 
   useEffect(() => {
-    if (activeProperty?.linkedAssetId && onSaveToLedger && calculations) {
+    if (onSaveToLedger && calculations && activeProperty) {
       onSaveToLedger(activeProperty.id, {
         name: activeProperty.name,
         value: Math.round(calculations.currentValForLedger),
@@ -280,29 +277,13 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
       });
     }
   }, [
-    activeProperty?.linkedAssetId,
+    activeProperty?.id,
     activeProperty?.name,
     activeProperty?.interestRate,
     calculations?.currentValForLedger,
     calculations?.currentBalanceForLedger,
     calculations?.monthlyMortgage
   ]);
-
-  const handleSave = () => {
-    if (onSaveToLedger && activeProperty && calculations) {
-      onSaveToLedger(activeProperty.id, {
-        name: activeProperty.name,
-        value: Math.round(calculations.currentValForLedger),
-        loanBalance: Math.round(calculations.currentBalanceForLedger),
-        mortgagePayment: calculations.monthlyMortgage,
-        interestRate: activeProperty.interestRate / 100,
-      });
-      setSavedStatus(prev => ({ ...prev, [activeId]: true }));
-      setTimeout(() => {
-        setSavedStatus(prev => ({ ...prev, [activeId]: false }));
-      }, 3000);
-    }
-  };
 
   if (!activeProperty || !calculations) {
     return (
@@ -336,35 +317,6 @@ export default function RealEstateCalculator({ properties, onUpdateProperty, onA
               {t('realEstateExplanation')}
             </p>
           </div>
-          {onSaveToLedger && (
-            <button
-              onClick={handleSave}
-              disabled={savedStatus[activeId]}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                savedStatus[activeId]
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700"
-              )}
-            >
-              {savedStatus[activeId] ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  {t('saved')}
-                </>
-              ) : activeProperty.linkedAssetId ? (
-                <>
-                  <Save className="w-4 h-4" />
-                  Update Ledger
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  {t('saveToLedger')}
-                </>
-              )}
-            </button>
-          )}
         </div>
 
         {/* Property Selector */}

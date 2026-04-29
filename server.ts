@@ -394,7 +394,7 @@ async function startServer() {
 
         if (assetsToUpdate.length === 0) continue;
 
-        const tickers = Array.from(new Set(assetsToUpdate.map((a: any) => normalizeTicker(a.ticker))));
+        const tickers = Array.from(new Set(assetsToUpdate.map((a: any) => normalizeTicker(a.ticker)))) as string[];
         
         const priceMap: Record<string, number> = {};
         for(const symbol of tickers) {
