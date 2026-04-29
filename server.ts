@@ -361,6 +361,93 @@ async function startServer() {
     }
   });
 
+          app.all('/api/cron/sync', async (req, res) => {
+    try {
+      if (req.method !== 'GET' && req.method !== 'POST') {
+        return res.status(405).json({ error: "Method not allowed" });
+      }
+      await runBackgroundSync();
+      res.json({ success: true, message: "Background sync completed" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  async function runBackgroundSync() {
+    console.log(`[${new Date().toISOString()}] Starting global background sync for all users`);
+    const db = getDb();
+    if (!db) {
+      console.error("No database connection available for background sync.");
+      return;
+    }
+
+    try {
+      const usersRef = await db.collection('users').get();
+      for (const userDoc of usersRef.docs) {
+        const userId = userDoc.id;
+        const assetsRef = await db.collection('users').doc(userId).collection('assets').get();
+        if (assetsRef.empty) continue;
+        
+        const assetsToUpdate = assetsRef.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((a: any) => a.ticker && a.ticker !== 'CASH' && (a.qty > 0 || (a.type !== 'Private' && a.type !== 'Real Estate' && a.ticker !== 'Primary Res' && a.ticker !== 'Company Dtm')));
+
+        if (assetsToUpdate.length === 0) continue;
+
+        const tickers = Array.from(new Set(assetsToUpdate.map((a: any) => normalizeTicker(a.ticker))));
+        
+        const priceMap: Record<string, number> = {};
+        for(const symbol of tickers) {
+           const price = await fetchLivePrice(symbol, FINNHUB_API_KEY);
+           if (price && price > 0) {
+              priceMap[symbol] = price;
+              // Save to cache
+              await db.collection('prices').doc(symbol).set({
+                symbol,
+                price,
+                date: new Date().toISOString().split('T')[0],
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
+           } else {
+              // Try fallback from cache
+              const doc = await db.collection('prices').doc(symbol).get();
+              if (doc.exists && doc.data()?.price) {
+                 priceMap[symbol] = doc.data()?.price;
+              } else {
+                 const mock = getMockPrice(symbol);
+                 if (mock !== 100.0) priceMap[symbol] = mock;
+              }
+           }
+        }
+
+        const batch = db.batch();
+        let hasUpdates = false;
+
+        for (const asset of assetsToUpdate) {
+            const sym = normalizeTicker(asset.ticker);
+            const livePrice = priceMap[sym];
+            if (livePrice && livePrice !== asset.price) {
+                const newTotal = (asset.qty || 0) * livePrice;
+                const assetRef = db.collection('users').doc(userId).collection('assets').doc(asset.id);
+                batch.update(assetRef, { price: livePrice, total: newTotal, updatedAt: new Date().toISOString() });
+                hasUpdates = true;
+            }
+        }
+
+        if (hasUpdates) {
+           await batch.commit();
+           console.log(`[${new Date().toISOString()}] Updated assets for user: ${userId}`);
+        }
+      }
+      console.log(`[${new Date().toISOString()}] Background sync completed for all users`);
+    } catch (e) {
+      console.error("Background sync failed:", e);
+    }
+  }
+
+  // Run the background sync every hour (3600000 ms) automatically while the server is alive
+  setInterval(runBackgroundSync, 3600000);
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

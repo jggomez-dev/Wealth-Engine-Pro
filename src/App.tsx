@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Asset, SimulationParams, SimulationPath, Liability, HistoricalNetWorth, PropertyConfig, AssetType } from './types';
 import { runMonteCarlo, calculatePortfolioBeta, calculateRunway, calculateFIYear, MonteCarloResults, parseVal } from './utils/finance';
 import { getPortfolioInsight } from './services/geminiService';
@@ -60,6 +60,11 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
+  const assetsRef = useRef<Asset[]>(INITIAL_ASSETS);
+  useEffect(() => {
+    assetsRef.current = assets;
+  }, [assets]);
+  
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [historicalRecords, setHistoricalRecords] = useState<HistoricalNetWorth[]>([]);
   const [realEstateProperties, setRealEstateProperties] = useState<PropertyConfig[]>([
@@ -95,6 +100,10 @@ export default function App() {
     }
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
+  useEffect(() => {
+    isSyncingRef.current = isSyncing;
+  }, [isSyncing]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [coachPrompt, setCoachPrompt] = useState('');
   const [coachResponse, setCoachResponse] = useState('');
@@ -119,9 +128,9 @@ export default function App() {
 
   // Fetch Live Prices
   const fetchPrices = async (currentAssets?: Asset[], forceClearCache: boolean = false) => {
-    if (isSyncing && !forceClearCache) return; // Prevent concurrent syncs
+    if (isSyncingRef.current && !forceClearCache) return; // Prevent concurrent syncs
     setIsSyncing(true);
-    const targetAssets = currentAssets || assets;
+    const targetAssets = currentAssets || assetsRef.current;
     const tickers = Array.from(new Set(targetAssets
       .filter(a => a.ticker && a.ticker !== 'CASH' && (a.qty > 0 || (a.type !== 'Private' && a.type !== 'Real Estate' && a.ticker !== 'Primary Res' && a.ticker !== 'Company Dtm')))
       .map(a => {
@@ -235,6 +244,26 @@ export default function App() {
   };
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPrices();
+      }
+    };
+    
+    const handleFocus = () => {
+      fetchPrices();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
+  useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch('/api/health');
@@ -251,7 +280,7 @@ export default function App() {
     };
     checkHealth();
     fetchPrices();
-    const interval = setInterval(fetchPrices, 3600000);
+    const interval = setInterval(() => fetchPrices(), 3600000);
     return () => clearInterval(interval);
   }, []);
 
